@@ -29,4 +29,14 @@ public partial class MainWindow : Window
             app.Runtime.Keys.HoldMs = dlg.Result.KeyHoldMs;
         }
     }
+
+    private void OnTitleBarDrag(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == System.Windows.Input.MouseButton.Left) DragMove();
+    }
+
+    private void OnTitleBarMinimizeClicked(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void OnTitleBarMaximizeClicked(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void OnTitleBarCloseClicked(object sender, RoutedEventArgs e) => Close();
 }

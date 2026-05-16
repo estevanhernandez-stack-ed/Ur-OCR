@@ -1,14 +1,18 @@
 <UserControl x:Class="RoRoRo.UrOcr.UI.ActivityPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Expander Header="Activity (last 100)" IsExpanded="False">
+    <Expander IsExpanded="False">
+        <Expander.Header>
+            <TextBlock Text="ACTIVITY (LAST 100)"
+                       Style="{StaticResource MetaLabel}" />
+        </Expander.Header>
         <ListView x:Name="Items" MaxHeight="220">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Header="At" DisplayMemberBinding="{Binding At, StringFormat=HH:mm:ss}" Width="80"/>
-                    <GridViewColumn Header="Trigger" DisplayMemberBinding="{Binding TriggerName}" Width="180"/>
-                    <GridViewColumn Header="Kind" DisplayMemberBinding="{Binding Kind}" Width="120"/>
-                    <GridViewColumn Header="Detail" DisplayMemberBinding="{Binding Detail}" Width="360"/>
+                    <GridViewColumn Header="AT" DisplayMemberBinding="{Binding At, StringFormat=HH:mm:ss}" Width="80" />
+                    <GridViewColumn Header="TRIGGER" DisplayMemberBinding="{Binding TriggerName}" Width="180" />
+                    <GridViewColumn Header="KIND" DisplayMemberBinding="{Binding Kind}" Width="120" />
+                    <GridViewColumn Header="DETAIL" DisplayMemberBinding="{Binding Detail}" Width="360" />
                 </GridView>
             </ListView.View>
         </ListView>

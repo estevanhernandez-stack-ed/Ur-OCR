@@ -3,24 +3,47 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:RoRoRo.UrOcr.UI">
     <ScrollViewer>
-        <StackPanel Margin="8">
-            <TextBlock Text="Name" />
-            <TextBox Text="{Binding Source.Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,8"/>
+        <StackPanel Margin="20,16,20,20">
 
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                <CheckBox Content="Enabled" IsChecked="{Binding Enabled}" Margin="0,0,16,0"/>
-                <CheckBox Content="Account-aware" IsChecked="{Binding Source.AccountAware}"/>
+            <TextBlock Text="NAME"
+                       Style="{StaticResource MetaLabel}"
+                       Margin="0,0,0,4" />
+            <TextBox Text="{Binding Source.Name, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,0,0,16" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <CheckBox Content="Enabled"
+                          IsChecked="{Binding Enabled}"
+                          Margin="0,0,20,0" />
+                <CheckBox Content="Account-aware"
+                          IsChecked="{Binding Source.AccountAware}" />
             </StackPanel>
 
-            <TextBlock Text="Region" />
-            <TextBlock Text="{Binding Source.Region}" Margin="0,2,0,4"/>
-            <Button Content="Re-pick region" HorizontalAlignment="Left" Padding="6,3" Margin="0,0,0,8"/>
+            <TextBlock Text="REGION"
+                       Style="{StaticResource MetaLabel}"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="{Binding Source.Region}"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       FontSize="11"
+                       Margin="0,0,0,6" />
+            <Button Content="Re-pick region"
+                    Style="{StaticResource SecondaryButton}"
+                    Padding="10,6"
+                    HorizontalAlignment="Left"
+                    Margin="0,0,0,16" />
 
-            <TextBlock Text="Keybind" />
-            <local:KeybindCapture Combo="{Binding Source.Keybind, Mode=TwoWay}" Margin="0,2,0,8"/>
+            <TextBlock Text="KEYBIND"
+                       Style="{StaticResource MetaLabel}"
+                       Margin="0,0,0,4" />
+            <local:KeybindCapture Combo="{Binding Source.Keybind, Mode=TwoWay}"
+                                  Margin="0,0,0,16" />
 
-            <TextBlock Text="Cooldown (ms)" />
-            <TextBox Text="{Binding Source.CooldownMs}" Margin="0,2,0,8"/>
+            <TextBlock Text="COOLDOWN (MS)"
+                       Style="{StaticResource MetaLabel}"
+                       Margin="0,0,0,4" />
+            <TextBox Text="{Binding Source.CooldownMs}"
+                     Margin="0,0,0,0" />
+
         </StackPanel>
     </ScrollViewer>
 </UserControl>
