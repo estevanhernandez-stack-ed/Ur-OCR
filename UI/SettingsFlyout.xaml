@@ -1,0 +1,23 @@
+<Window x:Class="RoRoRo.UrOcr.UI.SettingsFlyout"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:RoRoRo.UrOcr.UI"
+        Title="Settings" SizeToContent="WidthAndHeight" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <StackPanel Margin="16" MinWidth="320">
+        <TextBlock Text="Tick rate (Hz)" />
+        <ComboBox x:Name="TickRate" Margin="0,2,0,12">
+            <ComboBoxItem Content="3"/>
+            <ComboBoxItem Content="5"/>
+            <ComboBoxItem Content="10"/>
+        </ComboBox>
+        <TextBlock Text="Pause-all hotkey"/>
+        <local:KeybindCapture x:Name="PauseHotkey" Margin="0,2,0,12"/>
+        <TextBlock Text="Key hold (ms)"/>
+        <TextBox x:Name="HoldMs" Margin="0,2,0,12"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Save" Width="80" Margin="0,0,6,0" Click="OnSave" IsDefault="True"/>
+            <Button Content="Cancel" Width="80" Click="OnCancel" IsCancel="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

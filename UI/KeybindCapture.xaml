@@ -1,0 +1,8 @@
+<UserControl x:Class="RoRoRo.UrOcr.UI.KeybindCapture"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="True" KeyDown="OnKeyDown" PreviewKeyDown="OnKeyDown">
+    <Border BorderBrush="#888" BorderThickness="1" Padding="6,3" CornerRadius="3">
+        <TextBlock x:Name="Display" Text="Click and press a key combo..."/>
+    </Border>
+</UserControl>
