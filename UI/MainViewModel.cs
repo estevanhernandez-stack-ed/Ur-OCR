@@ -31,13 +31,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var pick = new RegionPickerOverlay();
             if (pick.ShowDialog() != true || pick.Picked is null) return;
 
+            // Capture the picked region and let the user click a pixel to set the target color.
+            using var captured = runtime.Capture.Capture(pick.Picked);
+            var colorPicker = new ColorPickerDialog(captured);
+            if (colorPicker.ShowDialog() != true || colorPicker.SelectedColor is null) return;
+
             var t = new Trigger
             {
                 Id = Guid.NewGuid(),
                 Name = "New trigger",
                 Region = pick.Picked,
                 Mode = TriggerMode.Color,
-                Color = new ColorCriteria(new Rgb(255, 255, 255), 10, ColorSamplingMode.RegionAverage),
+                Color = new ColorCriteria(colorPicker.SelectedColor, colorPicker.Tolerance, ColorSamplingMode.SinglePixel),
                 Keybind = new KeyCombo("F", Array.Empty<string>()),
             };
             _runtime.Triggers.Add(t);

@@ -32,14 +32,21 @@ public partial class RegionPickerOverlay : Window
         Selection.Width = 0; Selection.Height = 0;
     }
 
+    private (double sx, double sy) GetDpiScale()
+    {
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this);
+        return (dpi.DpiScaleX, dpi.DpiScaleY);
+    }
+
     private void OnMove(object sender, MouseEventArgs e)
     {
         var p = e.GetPosition(Root);
         LoupeCtl.Visibility = Visibility.Visible;
         Canvas.SetLeft(LoupeCtl, Math.Min(p.X + 20, ActualWidth - 170));
         Canvas.SetTop(LoupeCtl, Math.Min(p.Y + 20, ActualHeight - 170));
-        var sx = (int)(SystemParameters.VirtualScreenLeft + p.X);
-        var sy = (int)(SystemParameters.VirtualScreenTop + p.Y);
+        var (sx_scale, sy_scale) = GetDpiScale();
+        var sx = (int)((SystemParameters.VirtualScreenLeft + p.X) * sx_scale);
+        var sy = (int)((SystemParameters.VirtualScreenTop + p.Y) * sy_scale);
         try { LoupeCtl.UpdateAt(sx, sy, _capture); } catch { }
 
         if (_start is null) return;
@@ -49,17 +56,18 @@ public partial class RegionPickerOverlay : Window
         var h = Math.Abs(p.Y - _start.Value.Y);
         Canvas.SetLeft(Selection, x); Canvas.SetTop(Selection, y);
         Selection.Width = w; Selection.Height = h;
-        ReadOut.Text = $"({(int)(SystemParameters.VirtualScreenLeft + x)}, {(int)(SystemParameters.VirtualScreenTop + y)}) — {(int)w}×{(int)h}";
+        ReadOut.Text = $"({(int)((SystemParameters.VirtualScreenLeft + x) * sx_scale)}, {(int)((SystemParameters.VirtualScreenTop + y) * sy_scale)}) — {(int)(w * sx_scale)}×{(int)(h * sy_scale)} px";
     }
 
     private void OnUp(object sender, MouseButtonEventArgs e)
     {
         if (_start is null) return;
         var p = e.GetPosition(Root);
-        var x = (int)(SystemParameters.VirtualScreenLeft + Math.Min(p.X, _start.Value.X));
-        var y = (int)(SystemParameters.VirtualScreenTop + Math.Min(p.Y, _start.Value.Y));
-        var w = (int)Math.Abs(p.X - _start.Value.X);
-        var h = (int)Math.Abs(p.Y - _start.Value.Y);
+        var (sx_scale, sy_scale) = GetDpiScale();
+        var x = (int)((SystemParameters.VirtualScreenLeft + Math.Min(p.X, _start.Value.X)) * sx_scale);
+        var y = (int)((SystemParameters.VirtualScreenTop + Math.Min(p.Y, _start.Value.Y)) * sy_scale);
+        var w = (int)(Math.Abs(p.X - _start.Value.X) * sx_scale);
+        var h = (int)(Math.Abs(p.Y - _start.Value.Y) * sy_scale);
         if (w < 8 || h < 8) { _start = null; Selection.Visibility = Visibility.Collapsed; return; }
         Picked = new RegionRect(x, y, w, h);
         DialogResult = true;
