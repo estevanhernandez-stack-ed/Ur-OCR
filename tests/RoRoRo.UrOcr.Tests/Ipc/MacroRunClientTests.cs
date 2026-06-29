@@ -61,6 +61,29 @@ public class MacroRunClientTests
         Assert.Equal("01OK", resp.PlaybackId);
     }
 
+    // Cancelled-wait: injected opener throws OperationCanceledException (simulates a pre-cancelled token
+    // or a long-macro ack-timeout). RunAsync must return "ack-timeout", not "ur-task-not-running", and must NOT throw.
+    [Fact]
+    public async Task RunAsync_CancelledToken_ReturnsAckTimeoutNotNotRunning()
+    {
+        Task<Stream?> CancellingOpener(CancellationToken _) =>
+            Task.FromException<Stream?>(new OperationCanceledException());
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var client = new MacroRunClient(CancellingOpener);
+        var ex = await Record.ExceptionAsync(() =>
+            client.RunAsync("any-macro-id", null, cts.Token));
+
+        Assert.Null(ex); // must NOT throw
+
+        // Confirm the honest reason code.
+        var resp = await client.RunAsync("any-macro-id", null, cts.Token);
+        Assert.False(resp.Ok);
+        Assert.Equal("ack-timeout", resp.Reason);
+    }
+
     // Not-running: injected opener returns null — RunAsync returns a synthetic refusal, no throw.
     [Fact]
     public async Task RunAsync_NullStream_ReturnsNotRunningRefusal()

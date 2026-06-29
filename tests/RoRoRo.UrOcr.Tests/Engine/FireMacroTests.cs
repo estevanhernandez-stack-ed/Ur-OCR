@@ -125,4 +125,21 @@ public class FireMacroTests
         Assert.Equal(0, keys.Pressed);
         Assert.Contains(log.Snapshot(), e => e.Kind == ActivityKind.WouldFire);
     }
+
+    [Fact]
+    public async Task RefusedMacro_response_logs_Fired_with_refused_detail()
+    {
+        var (c, color, keys, log, store, macroClient) = Make(dryRun: false);
+        macroClient.Response = new RunMacroResponse(false, null, false, "busy", "Ur Task is busy.");
+        var trig = RunMacroTrigger("macro-refused");
+        store.Add(trig);
+        color.Result = true;
+
+        await c.TickOnceAsync(CancellationToken.None);
+
+        Assert.Single(macroClient.Calls);
+        Assert.Equal(0, keys.Pressed);
+        var entry = Assert.Single(log.Snapshot(), e => e.Kind == ActivityKind.Fired);
+        Assert.Contains("refused", entry.Detail, StringComparison.OrdinalIgnoreCase);
+    }
 }

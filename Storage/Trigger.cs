@@ -31,7 +31,9 @@ public sealed class Trigger
     // via the action bridge. Additive — legacy triggers with no "action" key
     // deserialize as KeyChord (System.Text.Json leaves the default).
     public TriggerAction Action { get; set; } = TriggerAction.KeyChord;
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? MacroId { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? MacroTargets { get; set; }   // null => foreground alt
     public int CooldownMs { get; set; } = 2000;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

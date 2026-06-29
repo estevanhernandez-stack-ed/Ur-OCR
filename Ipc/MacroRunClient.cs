@@ -37,6 +37,14 @@ public sealed class MacroRunClient : IMacroRunClient
             return JsonSerializer.Deserialize<RunMacroResponse>(respBytes, BridgeContract.Json)
                    ?? new RunMacroResponse(false, null, false, "refused", "Empty response.");
         }
+        catch (OperationCanceledException)
+        {
+            // The wait was cancelled (e.g. the coordinator's per-tick watchdog) before Ur Task
+            // acked. Ur Task only acks after the macro finishes playing, so a long macro lands
+            // here while it IS running — report that honestly, not "not running".
+            return new RunMacroResponse(false, null, false, "ack-timeout",
+                "Macro request sent; Ur Task did not ack within the tick window (long macro?).");
+        }
         catch (Exception ex)
         {
             return new RunMacroResponse(false, null, false, "ur-task-not-running", ex.Message);
