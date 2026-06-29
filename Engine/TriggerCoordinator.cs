@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using RoRoRo.UrOcr.Ipc;
 using RoRoRo.UrOcr.Storage;
 
 namespace RoRoRo.UrOcr.Engine;
@@ -32,7 +33,8 @@ public sealed class TriggerCoordinator(
     IKeyPress keys,
     ActivityLog log,
     IClock clock,
-    Action<Trigger>? onFirstFire = null)
+    Action<Trigger>? onFirstFire = null,
+    IMacroRunClient? macroClient = null)
 {
     public int TickRateHz { get; set; } = 5;
     public TimeSpan WatchdogTimeout { get; set; } = TimeSpan.FromSeconds(5);
@@ -134,9 +136,16 @@ public sealed class TriggerCoordinator(
             {
                 if (DryRun)
                 {
-                    // Log-only: prove detection without pressing keys or burning cooldown/hit-count.
                     log.Record(trig.Id, trig.Name, ActivityKind.WouldFire,
                         detail.Length > 0 ? $"OCR: {detail}" : null);
+                }
+                else if (trig.Action == TriggerAction.RunMacro && macroClient is not null && trig.MacroId is not null)
+                {
+                    var resp = await macroClient.RunAsync(trig.MacroId, trig.MacroTargets, ct).ConfigureAwait(false);
+                    store.MarkFired(trig.Id, now);
+                    log.Record(trig.Id, trig.Name, ActivityKind.Fired,
+                        resp.Ok ? $"macro {trig.MacroId}" : $"macro refused: {resp.Reason}");
+                    if (!trig.FirstFireConfirmed) onFirstFire?.Invoke(trig);
                 }
                 else
                 {
@@ -144,8 +153,7 @@ public sealed class TriggerCoordinator(
                     store.MarkFired(trig.Id, now);
                     log.Record(trig.Id, trig.Name, ActivityKind.Fired,
                         detail.Length > 0 ? $"OCR: {detail}" : null);
-                    if (!trig.FirstFireConfirmed)
-                        onFirstFire?.Invoke(trig);
+                    if (!trig.FirstFireConfirmed) onFirstFire?.Invoke(trig);
                 }
             }
             else if (!matched)
