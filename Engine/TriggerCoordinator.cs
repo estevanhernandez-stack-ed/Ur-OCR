@@ -37,6 +37,7 @@ public sealed class TriggerCoordinator(
     public int TickRateHz { get; set; } = 5;
     public TimeSpan WatchdogTimeout { get; set; } = TimeSpan.FromSeconds(5);
     public bool Paused { get; set; }
+    public bool DryRun { get; set; }
 
     private readonly Dictionary<Guid, bool> _wasMatched = new();
     private CancellationTokenSource? _cts;
@@ -131,12 +132,21 @@ public sealed class TriggerCoordinator(
 
             if (matched && !was && cooldownReady)
             {
-                keys.Press(trig.Keybind);
-                store.MarkFired(trig.Id, now);
-                log.Record(trig.Id, trig.Name, ActivityKind.Fired,
-                    detail.Length > 0 ? $"OCR: {detail}" : null);
-                if (!trig.FirstFireConfirmed)
-                    onFirstFire?.Invoke(trig);
+                if (DryRun)
+                {
+                    // Log-only: prove detection without pressing keys or burning cooldown/hit-count.
+                    log.Record(trig.Id, trig.Name, ActivityKind.WouldFire,
+                        detail.Length > 0 ? $"OCR: {detail}" : null);
+                }
+                else
+                {
+                    keys.Press(trig.Keybind);
+                    store.MarkFired(trig.Id, now);
+                    log.Record(trig.Id, trig.Name, ActivityKind.Fired,
+                        detail.Length > 0 ? $"OCR: {detail}" : null);
+                    if (!trig.FirstFireConfirmed)
+                        onFirstFire?.Invoke(trig);
+                }
             }
             else if (!matched)
             {
