@@ -10,7 +10,12 @@ public class TriggerCoordinatorTests
 {
     private sealed class FakeClock : IClock { public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow; }
     private sealed class FakeCapture : ICaptureSource { public Bitmap Capture(RegionRect r) => new(r.Width, r.Height); }
-    private sealed class FakeColor : IColorMatchEngine { public bool Result; public bool Matches(Bitmap b, ColorCriteria c) => Result; }
+    private sealed class FakeColor : IColorMatchEngine
+    {
+        public bool Result;
+        public bool Matches(Bitmap b, ColorCriteria c) => Result;
+        public ColorMatchResult Evaluate(Bitmap b, ColorCriteria c) => new(new RoRoRo.UrOcr.Storage.Rgb(0, 0, 0), 0, Result);
+    }
     private sealed class FakeText : ITextMatchEngine
     {
         public bool Result;

@@ -5,7 +5,11 @@ using RoRoRo.UrOcr.Storage;
 namespace RoRoRo.UrOcr.Engine;
 
 public interface ICaptureSource { Bitmap Capture(RegionRect region); }
-public interface IColorMatchEngine { bool Matches(Bitmap b, ColorCriteria c); }
+public interface IColorMatchEngine
+{
+    bool Matches(Bitmap b, ColorCriteria c);
+    ColorMatchResult Evaluate(Bitmap b, ColorCriteria c);
+}
 public interface ITextMatchEngine
 {
     Task<(bool matched, string text)> RunAsync(Bitmap b, TextCriteria c);
