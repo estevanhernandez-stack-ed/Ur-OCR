@@ -105,6 +105,11 @@
                                 Padding="10,6"
                                 Margin="0,0,8,0"
                                 Command="{Binding TogglePauseCommand}" />
+                        <Button Content="Dry run (don't press keys)"
+                                Style="{StaticResource SecondaryButton}"
+                                Padding="10,6"
+                                Margin="0,0,8,0"
+                                Command="{Binding ToggleDryRunCommand}" />
                         <Button Content="+ Add trigger"
                                 Style="{StaticResource PrimaryButton}"
                                 Padding="10,6"
@@ -130,7 +135,7 @@
                 <ListBox Grid.Column="0"
                          ItemsSource="{Binding Triggers}"
                          SelectedItem="{Binding Selected}"
-                         SelectionMode="Extended"
+                         SelectionMode="Single"
                          Margin="0"
                          Padding="6">
                     <ListBox.ItemTemplate>

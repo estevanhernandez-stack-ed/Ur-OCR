@@ -23,3 +23,6 @@ Thumbs.db
 
 # WPF temp csprojs
 *_wpftmp.csproj
+
+# SDD scratch
+.superpowers/

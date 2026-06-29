@@ -14,18 +14,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public TriggerRowViewModel? Selected
     {
         get => _selected;
-        set { _selected = value; OnChanged(); }
+        set
+        {
+            _selected?.StopPreview();
+            _selected = value;
+            OnChanged();
+            _selected?.StartPreview();
+        }
     }
     private TriggerRowViewModel? _selected;
 
     public string StatusText { get; private set; } = "Watching";
     public ICommand AddTriggerCommand { get; }
     public ICommand TogglePauseCommand { get; }
+    public ICommand ToggleDryRunCommand { get; }
 
     public MainViewModel(PluginRuntime runtime)
     {
         _runtime = runtime;
-        foreach (var t in runtime.Triggers.All) Triggers.Add(new TriggerRowViewModel(t));
+        foreach (var t in runtime.Triggers.All) Triggers.Add(new TriggerRowViewModel(t, runtime.Preview));
         AddTriggerCommand = new RelayCommand(_ =>
         {
             var pick = new RegionPickerOverlay();
@@ -46,7 +53,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Keybind = new KeyCombo("F", Array.Empty<string>()),
             };
             _runtime.Triggers.Add(t);
-            var row = new TriggerRowViewModel(t);
+            var row = new TriggerRowViewModel(t, _runtime.Preview);
             Triggers.Add(row);
             Selected = row;
         });
@@ -55,6 +62,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (runtime.Coordinator is not null)
                 runtime.Coordinator.Paused = !runtime.Coordinator.Paused;
             StatusText = runtime.Coordinator?.Paused == true ? "Paused" : "Watching";
+            OnChanged(nameof(StatusText));
+        });
+        ToggleDryRunCommand = new RelayCommand(_ =>
+        {
+            if (runtime.Coordinator is not null)
+                runtime.Coordinator.DryRun = !runtime.Coordinator.DryRun;
+            StatusText = runtime.Coordinator?.DryRun == true ? "Dry run" :
+                         runtime.Coordinator?.Paused == true ? "Paused" : "Watching";
             OnChanged(nameof(StatusText));
         });
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };

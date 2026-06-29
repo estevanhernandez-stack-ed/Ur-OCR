@@ -6,7 +6,7 @@ namespace RoRoRo.UrOcr.Engine;
 
 public sealed class ColorMatcher : IColorMatchEngine
 {
-    public bool Matches(Bitmap bmp, ColorCriteria c)
+    public ColorMatchResult Evaluate(Bitmap bmp, ColorCriteria c)
     {
         var (r, g, b) = c.SamplingMode switch
         {
@@ -19,8 +19,10 @@ public sealed class ColorMatcher : IColorMatchEngine
         var dg = g - c.TargetRgb.G;
         var db = b - c.TargetRgb.B;
         var distance = Math.Sqrt(dr * dr + dg * dg + db * db);
-        return distance <= c.ToleranceRgb;
+        return new ColorMatchResult(new Rgb(r, g, b), distance, distance <= c.ToleranceRgb);
     }
+
+    public bool Matches(Bitmap bmp, ColorCriteria c) => Evaluate(bmp, c).Matched;
 
     private static (int r, int g, int b) SamplePixel(Bitmap bmp, int x, int y)
     {

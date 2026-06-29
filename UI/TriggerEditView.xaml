@@ -42,7 +42,79 @@
                        Style="{StaticResource MetaLabel}"
                        Margin="0,0,0,4" />
             <TextBox Text="{Binding Source.CooldownMs}"
-                     Margin="0,0,0,0" />
+                     Margin="0,0,0,16" />
+
+            <!-- Live match meter (color triggers only) -->
+            <TextBlock Text="LIVE MATCH METER"
+                       Style="{StaticResource MetaLabel}"
+                       Margin="0,0,0,8" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <!-- Target color swatch -->
+                <StackPanel Margin="0,0,16,0">
+                    <TextBlock Text="Target"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               FontSize="10"
+                               Margin="0,0,0,4" />
+                    <Border Width="32" Height="32"
+                            CornerRadius="4"
+                            BorderBrush="{StaticResource DividerBrush}"
+                            BorderThickness="1"
+                            Background="{Binding PreviewTargetBrush}" />
+                </StackPanel>
+
+                <!-- Sampled color swatch -->
+                <StackPanel Margin="0,0,16,0">
+                    <TextBlock Text="Sampled"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               FontSize="10"
+                               Margin="0,0,0,4" />
+                    <Border Width="32" Height="32"
+                            CornerRadius="4"
+                            BorderBrush="{StaticResource DividerBrush}"
+                            BorderThickness="1"
+                            Background="{Binding PreviewSampledBrush}" />
+                </StackPanel>
+
+                <!-- Distance text + match indicator -->
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding PreviewDistanceText}"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="13"
+                               Foreground="{StaticResource WhiteBrush}"
+                               Margin="0,0,0,6" />
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="10" Height="10"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,6,0">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="#CC3333" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding PreviewIsMatch}" Value="True">
+                                            <Setter Property="Fill" Value="#33CC66" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedTextBrush}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="no match" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding PreviewIsMatch}" Value="True">
+                                            <Setter Property="Text" Value="match" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
 
         </StackPanel>
     </ScrollViewer>
