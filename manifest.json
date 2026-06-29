@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "626labs.ur-ocr",
   "name": "RoRoRo Ur OCR",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "contractVersion": "1.0",
   "publisher": "626 Labs LLC",
   "description": "Watches user-defined screen regions for text or color triggers and fires keybinds when they match.",
