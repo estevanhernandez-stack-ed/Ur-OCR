@@ -246,6 +246,34 @@
                 <Setter Property="BorderThickness" Value="1" />
             </Style>
 
+            <!-- ListViewItem — the default WPF template uses the system light-blue
+                 selection highlight, and the implicit TextBlock style forces white
+                 text, so a selected row was white-on-light = unreadable. Give it a
+                 dark selected/hover background (mirrors ListBoxItem) so the white
+                 cell text stays legible. GridViewRowPresenter keeps the columns. -->
+            <Style TargetType="ListViewItem">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{StaticResource WhiteBrush}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ListViewItem">
+                            <Border x:Name="Border" Background="{TemplateBinding Background}" Padding="0,1">
+                                <GridViewRowPresenter Content="{TemplateBinding Content}"
+                                                      Columns="{TemplateBinding GridView.ColumnCollection}" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Border" Property="Background" Value="{StaticResource RowHoverBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="Border" Property="Background" Value="{StaticResource RowBgBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!-- GridViewColumnHeader — mono, muted, brand row bg -->
             <Style TargetType="GridViewColumnHeader">
                 <Setter Property="Background" Value="{StaticResource RowBgBrush}" />
