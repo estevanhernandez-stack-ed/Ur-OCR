@@ -5,6 +5,7 @@ namespace RoRoRo.UrOcr.Storage;
 public enum TriggerMode { Text, Color }
 public enum TextMatchType { Contains, Exact, Regex }
 public enum ColorSamplingMode { SinglePixel, RegionAverage }
+public enum TriggerAction { KeyChord, RunMacro }
 
 public sealed record RegionRect(int X, int Y, int Width, int Height);
 public sealed record Rgb(int R, int G, int B);
@@ -26,6 +27,14 @@ public sealed class Trigger
     public bool OcrPreprocess { get; set; }
     public bool AccountAware { get; set; } = true;
     public required KeyCombo Keybind { get; set; }
+    // Fire action: press the keybind (default, legacy) or run a Ur Task macro
+    // via the action bridge. Additive — legacy triggers with no "action" key
+    // deserialize as KeyChord (System.Text.Json leaves the default).
+    public TriggerAction Action { get; set; } = TriggerAction.KeyChord;
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? MacroId { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? MacroTargets { get; set; }   // null => foreground alt
     public int CooldownMs { get; set; } = 2000;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastFiredAt { get; set; }

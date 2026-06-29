@@ -4,6 +4,9 @@
              StartupUri="UI/MainWindow.xaml">
     <Application.Resources>
         <ResourceDictionary>
+            <!-- Converters -->
+            <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
             <!-- 626 Labs brand tokens. Same palette as RoRoRo's App.xaml so the
                  plugin window feels like it belongs with the parent app. -->
             <SolidColorBrush x:Key="BgBrush" Color="#0F1F31" />
