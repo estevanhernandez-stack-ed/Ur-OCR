@@ -32,11 +32,46 @@
                     HorizontalAlignment="Left"
                     Margin="0,0,0,16" />
 
-            <TextBlock Text="KEYBIND"
+            <!-- ACTION selector -->
+            <TextBlock Text="ACTION"
                        Style="{StaticResource MetaLabel}"
-                       Margin="0,0,0,4" />
+                       Margin="0,0,0,6" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <RadioButton Content="Press keybind"
+                             IsChecked="{Binding IsKeyChord, Mode=TwoWay}"
+                             Margin="0,0,16,0" />
+                <RadioButton Content="Run Ur Task macro"
+                             IsChecked="{Binding IsRunMacro, Mode=TwoWay}" />
+            </StackPanel>
+
+            <!-- Keybind capture — shown only when KeyChord action -->
             <local:KeybindCapture Combo="{Binding Source.Keybind, Mode=TwoWay}"
-                                  Margin="0,0,0,16" />
+                                  Margin="0,0,0,16"
+                                  Visibility="{Binding IsKeyChord, Converter={StaticResource BoolToVis}}" />
+
+            <!-- Macro picker — shown only when RunMacro action -->
+            <StackPanel Margin="0,0,0,16"
+                        Visibility="{Binding IsRunMacro, Converter={StaticResource BoolToVis}}">
+                <ComboBox ItemsSource="{Binding UrTaskMacros}"
+                          DisplayMemberPath="Name"
+                          SelectedValuePath="Id"
+                          SelectedValue="{Binding MacroId, Mode=TwoWay}" />
+                <TextBlock Text="No Ur Task macros found — record one in Ur Task"
+                           FontSize="11"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding UrTaskMacros.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
 
             <TextBlock Text="COOLDOWN (MS)"
                        Style="{StaticResource MetaLabel}"

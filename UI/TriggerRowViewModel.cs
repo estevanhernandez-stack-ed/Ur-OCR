@@ -17,6 +17,39 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
         get => source.Enabled;
         set { source.Enabled = value; OnChanged(); }
     }
+
+    // ── Action selector ───────────────────────────────────────────────────────
+
+    /// <summary>True when the trigger fires by pressing a keybind (default).</summary>
+    public bool IsKeyChord
+    {
+        get => source.Action == TriggerAction.KeyChord;
+        set
+        {
+            if (value) { source.Action = TriggerAction.KeyChord; OnChanged(); OnChanged(nameof(IsRunMacro)); }
+        }
+    }
+
+    /// <summary>True when the trigger fires by running a Ur Task macro.</summary>
+    public bool IsRunMacro
+    {
+        get => source.Action == TriggerAction.RunMacro;
+        set
+        {
+            if (value) { source.Action = TriggerAction.RunMacro; OnChanged(); OnChanged(nameof(IsKeyChord)); }
+        }
+    }
+
+    /// <summary>The macro ID stored on the trigger (null when action is KeyChord).</summary>
+    public string? MacroId
+    {
+        get => source.MacroId;
+        set { source.MacroId = value; OnChanged(); }
+    }
+
+    private IReadOnlyList<UrTaskMacro>? _urTaskMacros;
+    /// <summary>Available Ur Task macros, lazily loaded on first access or StartPreview.</summary>
+    public IReadOnlyList<UrTaskMacro> UrTaskMacros => _urTaskMacros ??= Storage.UrTaskMacros.Load();
     public string HitSummary => source.HitCount == 0
         ? "never fired"
         : $"fired {source.HitCount}× · {RelativeAge(source.LastFiredAt)}";
@@ -55,6 +88,9 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
 
     public void StartPreview()
     {
+        // Ensure macro list is loaded before the edit panel becomes visible.
+        _ = UrTaskMacros;
+
         if (source.Mode != TriggerMode.Color || source.Color is null) return;
         _previewTimer.Tick -= OnPreviewTick;
         _previewTimer.Tick += OnPreviewTick;
