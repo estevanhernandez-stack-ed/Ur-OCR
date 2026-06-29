@@ -135,7 +135,7 @@
                 <ListBox Grid.Column="0"
                          ItemsSource="{Binding Triggers}"
                          SelectedItem="{Binding Selected}"
-                         SelectionMode="Extended"
+                         SelectionMode="Single"
                          Margin="0"
                          Padding="6">
                     <ListBox.ItemTemplate>
