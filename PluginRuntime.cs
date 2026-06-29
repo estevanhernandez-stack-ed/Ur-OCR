@@ -23,6 +23,7 @@ public sealed class PluginRuntime
     public ToastService Toasts { get; } = new();
     public HotkeyService Hotkey { get; } = new();
     public TriggerCoordinator? Coordinator { get; private set; }
+    public Engine.PreviewEvaluator Preview { get; }
     public DisplayCheckResult LastDpiCheck { get; private set; } = DisplayCheckResult.FirstRun;
 
     private CancellationTokenSource? _cts;
@@ -33,6 +34,7 @@ public sealed class PluginRuntime
         Triggers = new TriggerStore();
         Settings = new SettingsStore();
         Foreground = new ForegroundWatcher(Accounts);
+        Preview = new Engine.PreviewEvaluator(Capture, Color);
     }
 
     public async Task StartAsync()

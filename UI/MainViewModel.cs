@@ -14,7 +14,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public TriggerRowViewModel? Selected
     {
         get => _selected;
-        set { _selected = value; OnChanged(); }
+        set
+        {
+            _selected?.StopPreview();
+            _selected = value;
+            OnChanged();
+            _selected?.StartPreview();
+        }
     }
     private TriggerRowViewModel? _selected;
 
@@ -25,7 +31,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public MainViewModel(PluginRuntime runtime)
     {
         _runtime = runtime;
-        foreach (var t in runtime.Triggers.All) Triggers.Add(new TriggerRowViewModel(t));
+        foreach (var t in runtime.Triggers.All) Triggers.Add(new TriggerRowViewModel(t, runtime.Preview));
         AddTriggerCommand = new RelayCommand(_ =>
         {
             var pick = new RegionPickerOverlay();
@@ -46,7 +52,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Keybind = new KeyCombo("F", Array.Empty<string>()),
             };
             _runtime.Triggers.Add(t);
-            var row = new TriggerRowViewModel(t);
+            var row = new TriggerRowViewModel(t, _runtime.Preview);
             Triggers.Add(row);
             Selected = row;
         });
