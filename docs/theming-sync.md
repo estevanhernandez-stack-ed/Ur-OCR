@@ -43,16 +43,21 @@ Every failure path lands on Brand — a hand-edited host file must never break
 the plugin, and the plugin stays fully usable standalone (host not installed →
 Brand, which matches the XAML defaults).
 
-## Apply strategy — mutate brushes, don't sweep to DynamicResource
+## Apply strategy — DynamicResource consumers + instance replacement
 
-`App.xaml`'s brushes are plain **unfrozen** `SolidColorBrush`. Setting
-`brush.Color = newColor` re-renders every `{StaticResource}` consumer — so the
-entire XAML surface re-themes with **no DynamicResource sweep**. Preconditions:
+Match the host's ThemeService exactly: sweep every XAML reference to the theme
+brush keys from `{StaticResource}` to `{DynamicResource}` (**brushes only** —
+fonts, styles, and converters stay static), then apply by **replacing** the
+dictionary entry with a frozen `SolidColorBrush`. DynamicResource subscribers
+re-bind when the entry changes.
 
-- Keep the brushes plain `SolidColorBrush` — no `PresentationOptions:Freeze`.
-- If an entry comes back frozen or non-brush, fall back to replacing the
-  dictionary entry (replacement only propagates to DynamicResource consumers,
-  so treat it as a defensive fallback, not the main path).
+Do NOT try to mutate the existing brush's `Color` in place. It looks like it
+should work and it does not: StaticResource consumers capture brush instances
+at XAML parse time, so neither the startup apply nor live flips reach the
+rendered UI. Verified empirically on Ur Task v0.5 (PR #18) — the pixel test
+only went green after the DynamicResource sweep. The host's ThemeService
+doc comment warned about exactly this; believe it.
+
 - Marshal applies to the dispatcher; skip slots whose hex fails to parse
   (keep the current color rather than painting black).
 
