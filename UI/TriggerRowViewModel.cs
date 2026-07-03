@@ -24,7 +24,7 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
     {
         var pick = new RegionPickerOverlay();
         if (pick.ShowDialog() != true || pick.Picked is null) return;
-        var anchor = Engine.TriggerAnchor.ForPickedRegion(pick.Picked, runtime.Accounts.Pids, runtime.WindowMetrics);
+        var anchor = TriggerAnchor.ForPickedRegion(pick.Picked, runtime.Accounts.Pids, runtime.WindowMetrics);
         source.Region = anchor.Region;
         source.CoordSpace = anchor.CoordSpace;
         source.RecordedClientW = anchor.RecordedClientW;

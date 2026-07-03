@@ -12,7 +12,7 @@ public sealed class AccountRegistry
     public bool TryGetUserId(int pid, out long userId) => _pidToUserId.TryGetValue(pid, out userId);
     public bool IsAltPid(int pid) => _pidToUserId.ContainsKey(pid);
     public int Count => _pidToUserId.Count;
-    public IReadOnlyCollection<int> Pids => _pidToUserId.Keys.ToArray();
+    public IReadOnlyCollection<int> Pids => _pidToUserId.Keys.OrderBy(p => p).ToArray();
 
     public void Add(int pid, long userId) => _pidToUserId[pid] = userId;
     public void Remove(int pid) => _pidToUserId.TryRemove(pid, out _);

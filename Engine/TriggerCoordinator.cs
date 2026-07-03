@@ -113,8 +113,8 @@ public sealed class TriggerCoordinator(
                 }
             }
 
-            var captureRegion = TriggerRegionResolver.Resolve(trig, foreground.GetForegroundPid(), metrics);
-            if (captureRegion is null)
+            var captureRegion = TriggerRegionResolver.Resolve(trig, trig.IsClientSpace ? foreground.GetForegroundPid() : 0, metrics);
+            if (captureRegion is null || captureRegion.Width < 1 || captureRegion.Height < 1)
             {
                 // client trigger whose anchor window vanished mid-tick
                 log.Record(trig.Id, trig.Name, ActivityKind.SkippedNotAlt, "anchor window unavailable");

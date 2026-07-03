@@ -1,3 +1,4 @@
+using System.Linq;
 using RoRoRo.UrOcr.Engine;
 using RoRoRo.UrOcr.Hotkeys;
 using RoRoRo.UrOcr.PluginHost;
@@ -57,7 +58,7 @@ public sealed class PluginRuntime
             TickRateHz = Settings.Current.TickRateHz,
         };
         Coordinator.Start();
-        LastDpiCheck = Dpi.Check(GetCurrentFingerprint(), Triggers.All.Select(t => t.Region));
+        LastDpiCheck = Dpi.Check(GetCurrentFingerprint(), Triggers.All.Where(t => !t.IsClientSpace).Select(t => t.Region));
     }
 
     public async Task StopAsync()
