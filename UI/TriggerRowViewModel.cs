@@ -34,6 +34,16 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
     });
     private System.Windows.Input.ICommand? _repick;
 
+    /// <summary>Human-readable region anchor mode for the REGION line.</summary>
+    public string RegionModeText => source.IsClientSpace
+        ? $"Window-anchored (recorded {source.RecordedClientW}×{source.RecordedClientH})"
+        : $"Screen: {source.Region.X}, {source.Region.Y}  {source.Region.Width}×{source.Region.Height}";
+
+    /// <summary>True when the trigger is window-anchored. Read-only surface for
+    /// the mode indicator; switching modes is done via Re-pick (window) — a plain
+    /// setter can't re-derive the client offset without a fresh pick.</summary>
+    public bool IsWindowAnchored => source.IsClientSpace;
+
     // ── Action selector ───────────────────────────────────────────────────────
 
     /// <summary>True when the trigger fires by pressing a keybind (default).</summary>
