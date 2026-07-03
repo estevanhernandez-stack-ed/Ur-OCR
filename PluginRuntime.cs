@@ -1,3 +1,4 @@
+using System.Linq;
 using RoRoRo.UrOcr.Engine;
 using RoRoRo.UrOcr.Hotkeys;
 using RoRoRo.UrOcr.PluginHost;
@@ -23,6 +24,7 @@ public sealed class PluginRuntime
     public ToastService Toasts { get; } = new();
     public HotkeyService Hotkey { get; } = new();
     public Ipc.MacroRunClient MacroClient { get; } = new();
+    public IWindowMetrics WindowMetrics { get; } = new WindowMetrics();
     public TriggerCoordinator? Coordinator { get; private set; }
     public Engine.PreviewEvaluator Preview { get; }
     public DisplayCheckResult LastDpiCheck { get; private set; } = DisplayCheckResult.FirstRun;
@@ -35,7 +37,7 @@ public sealed class PluginRuntime
         Triggers = new TriggerStore();
         Settings = new SettingsStore();
         Foreground = new ForegroundWatcher(Accounts);
-        Preview = new Engine.PreviewEvaluator(Capture, Color);
+        Preview = new Engine.PreviewEvaluator(Capture, Color, WindowMetrics, Accounts);
     }
 
     public async Task StartAsync()
@@ -47,7 +49,8 @@ public sealed class PluginRuntime
 
         Coordinator = new TriggerCoordinator(
             Triggers, Capture, Color, Text, Foreground, Elevation, Keys, Activity,
-            new SystemClock(), onFirstFire: t => Toasts.Show(t.Action == Storage.TriggerAction.RunMacro
+            new SystemClock(), WindowMetrics,
+            onFirstFire: t => Toasts.Show(t.Action == Storage.TriggerAction.RunMacro
                 ? $"✓ \"{t.Name}\" ran a macro"
                 : $"✓ \"{t.Name}\" fired ({t.Keybind.Key})"),
             macroClient: MacroClient)
@@ -55,7 +58,7 @@ public sealed class PluginRuntime
             TickRateHz = Settings.Current.TickRateHz,
         };
         Coordinator.Start();
-        LastDpiCheck = Dpi.Check(GetCurrentFingerprint(), Triggers.All.Select(t => t.Region));
+        LastDpiCheck = Dpi.Check(GetCurrentFingerprint(), Triggers.All.Where(t => !t.IsClientSpace).Select(t => t.Region));
     }
 
     public async Task StopAsync()

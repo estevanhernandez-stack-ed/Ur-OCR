@@ -7,7 +7,7 @@ using RoRoRo.UrOcr.Storage;
 
 namespace RoRoRo.UrOcr.UI;
 
-public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview) : INotifyPropertyChanged
+public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview, PluginRuntime runtime) : INotifyPropertyChanged
 {
     public Trigger Source => source;
     public Guid Id => source.Id;
@@ -17,6 +17,33 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
         get => source.Enabled;
         set { source.Enabled = value; OnChanged(); }
     }
+
+    // ── Region re-pick ───────────────────────────────────────────────────────
+
+    public System.Windows.Input.ICommand RepickRegionCommand => _repick ??= new RelayCommand(_ =>
+    {
+        var pick = new RegionPickerOverlay();
+        if (pick.ShowDialog() != true || pick.Picked is null) return;
+        var anchor = TriggerAnchor.ForPickedRegion(pick.Picked, runtime.Accounts.Pids, runtime.WindowMetrics);
+        source.Region = anchor.Region;
+        source.CoordSpace = anchor.CoordSpace;
+        source.RecordedClientW = anchor.RecordedClientW;
+        source.RecordedClientH = anchor.RecordedClientH;
+        runtime.Triggers.Update(source);
+        OnChanged(nameof(RegionModeText));
+        OnChanged(nameof(IsWindowAnchored));
+    });
+    private System.Windows.Input.ICommand? _repick;
+
+    /// <summary>Human-readable region anchor mode for the REGION line.</summary>
+    public string RegionModeText => source.IsClientSpace
+        ? $"Window-anchored (recorded {source.RecordedClientW}×{source.RecordedClientH})"
+        : $"Screen: {source.Region.X}, {source.Region.Y}  {source.Region.Width}×{source.Region.Height}";
+
+    /// <summary>True when the trigger is window-anchored. Read-only surface for
+    /// the mode indicator; switching modes is done via Re-pick (window) — a plain
+    /// setter can't re-derive the client offset without a fresh pick.</summary>
+    public bool IsWindowAnchored => source.IsClientSpace;
 
     // ── Action selector ───────────────────────────────────────────────────────
 
@@ -134,10 +161,8 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
     {
         if (source.Mode != TriggerMode.Color || source.Color is null) return;
 
-        var region = source.Region;
-        var criteria = source.Color;
         ColorMatchResult? result = null;
-        try { result = preview.EvaluateOnce(region, criteria); }
+        try { result = preview.EvaluateTrigger(source); }
         catch { /* screen capture can fail transiently — skip tick */ }
 
         if (result is null)

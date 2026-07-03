@@ -27,6 +27,21 @@ public sealed class Trigger
     public bool OcrPreprocess { get; set; }
     public bool AccountAware { get; set; } = true;
     public required KeyCombo Keybind { get; set; }
+    // Window-anchoring (schema v2). "screen" = absolute pixels (legacy);
+    // "client" = Region is relative to the foreground alt's client area at the
+    // recorded client size, scaled to the live size at eval. Mirrors
+    // Macro.CoordSpace in Ur Task.
+    public string? CoordSpace { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? RecordedClientW { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? RecordedClientH { get; set; }
+
+    public const string CoordSpaceScreen = "screen";
+    public const string CoordSpaceClient = "client";
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsClientSpace =>
+        string.Equals(CoordSpace, CoordSpaceClient, System.StringComparison.OrdinalIgnoreCase);
     // Fire action: press the keybind (default, legacy) or run a Ur Task macro
     // via the action bridge. Additive — legacy triggers with no "action" key
     // deserialize as KeyChord (System.Text.Json leaves the default).
@@ -44,7 +59,7 @@ public sealed class Trigger
 
 public sealed class TriggersFile
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public List<Trigger> Triggers { get; set; } = new();
 }
 

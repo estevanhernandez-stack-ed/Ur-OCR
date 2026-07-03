@@ -32,7 +32,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public MainViewModel(PluginRuntime runtime)
     {
         _runtime = runtime;
-        foreach (var t in runtime.Triggers.All) Triggers.Add(new TriggerRowViewModel(t, runtime.Preview));
+        foreach (var t in runtime.Triggers.All) Triggers.Add(new TriggerRowViewModel(t, runtime.Preview, runtime));
         AddTriggerCommand = new RelayCommand(_ =>
         {
             var pick = new RegionPickerOverlay();
@@ -43,17 +43,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var colorPicker = new ColorPickerDialog(captured);
             if (colorPicker.ShowDialog() != true || colorPicker.SelectedColor is null) return;
 
+            var anchor = Engine.TriggerAnchor.ForPickedRegion(pick.Picked, runtime.Accounts.Pids, runtime.WindowMetrics);
             var t = new Trigger
             {
                 Id = Guid.NewGuid(),
                 Name = "New trigger",
-                Region = pick.Picked,
+                Region = anchor.Region,
+                CoordSpace = anchor.CoordSpace,
+                RecordedClientW = anchor.RecordedClientW,
+                RecordedClientH = anchor.RecordedClientH,
                 Mode = TriggerMode.Color,
                 Color = new ColorCriteria(colorPicker.SelectedColor, colorPicker.Tolerance, ColorSamplingMode.SinglePixel),
                 Keybind = new KeyCombo("F", Array.Empty<string>()),
             };
             _runtime.Triggers.Add(t);
-            var row = new TriggerRowViewModel(t, _runtime.Preview);
+            var row = new TriggerRowViewModel(t, _runtime.Preview, _runtime);
             Triggers.Add(row);
             Selected = row;
         });

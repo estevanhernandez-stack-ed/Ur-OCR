@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using RoRoRo.UrOcr.Ipc;
+using RoRoRo.UrOcr.PluginHost;
 using RoRoRo.UrOcr.Storage;
 
 namespace RoRoRo.UrOcr.Engine;
@@ -33,6 +34,7 @@ public sealed class TriggerCoordinator(
     IKeyPress keys,
     ActivityLog log,
     IClock clock,
+    IWindowMetrics metrics,
     Action<Trigger>? onFirstFire = null,
     IMacroRunClient? macroClient = null)
 {
@@ -94,7 +96,7 @@ public sealed class TriggerCoordinator(
             ct.ThrowIfCancellationRequested();
             if (!trig.Enabled) continue;
 
-            if (trig.AccountAware)
+            if (trig.AccountAware || trig.IsClientSpace)
             {
                 if (!foreground.IsForegroundAnAlt())
                 {
@@ -111,7 +113,15 @@ public sealed class TriggerCoordinator(
                 }
             }
 
-            using var bmp = capture.Capture(trig.Region);
+            var captureRegion = TriggerRegionResolver.Resolve(trig, trig.IsClientSpace ? foreground.GetForegroundPid() : 0, metrics);
+            if (captureRegion is null || captureRegion.Width < 1 || captureRegion.Height < 1)
+            {
+                // client trigger whose anchor window vanished mid-tick
+                log.Record(trig.Id, trig.Name, ActivityKind.SkippedNotAlt, "anchor window unavailable");
+                _wasMatched[trig.Id] = false;
+                continue;
+            }
+            using var bmp = capture.Capture(captureRegion);
             bool matched;
             string detail = string.Empty;
             if (trig.Mode == TriggerMode.Text && trig.Text is not null)

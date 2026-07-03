@@ -84,6 +84,7 @@ public sealed class TriggerStore
             var json = File.ReadAllText(_path);
             _state = JsonSerializer.Deserialize<TriggersFile>(json, TriggerJsonOptions.Default)
                      ?? new TriggersFile();
+            if (MigrateToV2()) WriteNow(); // sticky
         }
         catch (JsonException)
         {
@@ -92,6 +93,19 @@ public sealed class TriggerStore
             _state = new TriggersFile();
             CorruptedBackupPath = backup;
         }
+    }
+
+    // v1 → v2: triggers with no coordSpace are absolute-screen. Returns true if
+    // anything changed (so the caller persists the migration).
+    private bool MigrateToV2()
+    {
+        var changed = false;
+        if (_state.SchemaVersion < 2) { _state.SchemaVersion = 2; changed = true; }
+        foreach (var t in _state.Triggers)
+        {
+            if (string.IsNullOrEmpty(t.CoordSpace)) { t.CoordSpace = Trigger.CoordSpaceScreen; changed = true; }
+        }
+        return changed;
     }
 
     public string? CorruptedBackupPath { get; private set; }

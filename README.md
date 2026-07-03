@@ -18,6 +18,10 @@ A 626 Labs product · *Imagine Something Else*.
 - Per-trigger account-aware safety — fires only when a RoRoRo-managed Roblox window is foreground (so a misconfigured trigger doesn't spam keys into your browser).
 - Edge-triggered with cooldown — fires once on the no-match → match transition, then waits.
 
+## Window-anchored regions
+
+Trigger regions can anchor to an alt's window instead of a fixed screen spot. When a region is window-anchored, it follows whichever alt is in the foreground and scales with the window's size — moving or resizing the Roblox window no longer breaks detection. New triggers picked over an alt default to window-anchored; regions picked over a non-alt window stay screen-absolute, as do all pre-0.4 triggers (backward compatible, no re-pick needed).
+
 ## Capabilities
 
 | Capability | What it means |

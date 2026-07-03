@@ -22,12 +22,14 @@
             <TextBlock Text="REGION"
                        Style="{StaticResource MetaLabel}"
                        Margin="0,0,0,4" />
-            <TextBlock Text="{Binding Source.Region}"
+            <TextBlock Text="{Binding RegionModeText}"
                        Foreground="{StaticResource MutedTextBrush}"
                        FontSize="11"
+                       TextWrapping="Wrap"
                        Margin="0,0,0,6" />
             <Button Content="Re-pick region"
                     Style="{StaticResource SecondaryButton}"
+                    Command="{Binding RepickRegionCommand}"
                     Padding="10,6"
                     HorizontalAlignment="Left"
                     Margin="0,0,0,16" />
