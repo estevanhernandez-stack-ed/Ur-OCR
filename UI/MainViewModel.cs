@@ -26,6 +26,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string StatusText { get; private set; } = "Watching";
     public ICommand AddTriggerCommand { get; }
+    public ICommand DeleteTriggerCommand { get; }
     public ICommand TogglePauseCommand { get; }
     public ICommand ToggleDryRunCommand { get; }
 
@@ -60,6 +61,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var row = new TriggerRowViewModel(t, _runtime.Preview, _runtime);
             Triggers.Add(row);
             Selected = row;
+        });
+        DeleteTriggerCommand = new RelayCommand(o =>
+        {
+            if (o is not TriggerRowViewModel row) return;
+            _runtime.Triggers.Remove(row.Id);
+            Triggers.Remove(row);
+            if (ReferenceEquals(Selected, row)) Selected = null;
         });
         TogglePauseCommand = new RelayCommand(_ =>
         {
