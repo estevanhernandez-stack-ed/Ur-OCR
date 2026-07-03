@@ -134,10 +134,8 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
     {
         if (source.Mode != TriggerMode.Color || source.Color is null) return;
 
-        var region = source.Region;
-        var criteria = source.Color;
         ColorMatchResult? result = null;
-        try { result = preview.EvaluateOnce(region, criteria); }
+        try { result = preview.EvaluateTrigger(source); }
         catch { /* screen capture can fail transiently — skip tick */ }
 
         if (result is null)

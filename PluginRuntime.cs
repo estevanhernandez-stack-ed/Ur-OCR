@@ -36,7 +36,7 @@ public sealed class PluginRuntime
         Triggers = new TriggerStore();
         Settings = new SettingsStore();
         Foreground = new ForegroundWatcher(Accounts);
-        Preview = new Engine.PreviewEvaluator(Capture, Color);
+        Preview = new Engine.PreviewEvaluator(Capture, Color, WindowMetrics, Accounts);
     }
 
     public async Task StartAsync()

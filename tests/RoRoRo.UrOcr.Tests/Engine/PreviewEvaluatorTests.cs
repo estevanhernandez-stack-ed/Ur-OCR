@@ -1,6 +1,8 @@
 // tests/RoRoRo.UrOcr.Tests/Engine/PreviewEvaluatorTests.cs
+using System;
 using System.Drawing;
 using RoRoRo.UrOcr.Engine;
+using RoRoRo.UrOcr.PluginHost;
 using RoRoRo.UrOcr.Storage;
 using Xunit;
 
@@ -21,14 +23,36 @@ public class PreviewEvaluatorTests
         }
     }
 
-    [Fact]
-    public void EvaluateOnce_ReturnsMatchResult_ForCapturedColor()
+    private sealed class FakeMetrics : IWindowMetrics
     {
-        var pe = new PreviewEvaluator(new FakeCapture(255, 17, 95), new ColorMatcher());
-        var region = new RegionRect(0, 0, 4, 4);
-        var crit = new ColorCriteria(new Rgb(255, 17, 95), 10, ColorSamplingMode.SinglePixel);
+        public IntPtr Hwnd = new(0x10);
+        public (int X, int Y)? Origin = (0, 0);
+        public (int W, int H)? Size = (800, 600);
+        public IntPtr HwndForPid(int pid) => pid == 0 ? IntPtr.Zero : Hwnd;
+        public (int X, int Y)? ClientOrigin(IntPtr h) => h == IntPtr.Zero ? null : Origin;
+        public (int W, int H)? ClientSize(IntPtr h) => h == IntPtr.Zero ? null : Size;
+    }
 
-        var r = pe.EvaluateOnce(region, crit);
+    private static Trigger ScreenTrigger(RegionRect region, ColorCriteria color) => new()
+    {
+        Id = Guid.NewGuid(), Name = "s", Region = region, Mode = TriggerMode.Color, Color = color,
+        Keybind = new KeyCombo("F", Array.Empty<string>()), CoordSpace = Trigger.CoordSpaceScreen,
+    };
+
+    private static Trigger ClientTrigger(RegionRect region, ColorCriteria color) => new()
+    {
+        Id = Guid.NewGuid(), Name = "c", Region = region, Mode = TriggerMode.Color, Color = color,
+        Keybind = new KeyCombo("F", Array.Empty<string>()),
+        CoordSpace = Trigger.CoordSpaceClient, RecordedClientW = 800, RecordedClientH = 600,
+    };
+
+    [Fact]
+    public void EvaluateTrigger_ScreenTrigger_ReturnsMatchResult_ForCapturedColor()
+    {
+        var pe = new PreviewEvaluator(new FakeCapture(255, 17, 95), new ColorMatcher(), new FakeMetrics(), new AccountRegistry());
+        var trig = ScreenTrigger(new RegionRect(0, 0, 4, 4), new ColorCriteria(new Rgb(255, 17, 95), 10, ColorSamplingMode.SinglePixel));
+
+        var r = pe.EvaluateTrigger(trig);
 
         Assert.NotNull(r);
         Assert.True(r!.Matched);
@@ -36,9 +60,45 @@ public class PreviewEvaluatorTests
     }
 
     [Fact]
-    public void EvaluateOnce_DegenerateRegion_ReturnsNull()
+    public void EvaluateTrigger_DegenerateRegion_ReturnsNull()
     {
-        var pe = new PreviewEvaluator(new FakeCapture(0, 0, 0), new ColorMatcher());
-        Assert.Null(pe.EvaluateOnce(new RegionRect(0, 0, 0, 0), new ColorCriteria(new Rgb(0, 0, 0), 5, ColorSamplingMode.SinglePixel)));
+        var pe = new PreviewEvaluator(new FakeCapture(0, 0, 0), new ColorMatcher(), new FakeMetrics(), new AccountRegistry());
+        var trig = ScreenTrigger(new RegionRect(0, 0, 0, 0), new ColorCriteria(new Rgb(0, 0, 0), 5, ColorSamplingMode.SinglePixel));
+
+        Assert.Null(pe.EvaluateTrigger(trig));
+    }
+
+    [Fact]
+    public void EvaluateTrigger_ClientTrigger_NoRunningAlts_ReturnsNull()
+    {
+        // No alts registered -> Pids.FirstOrDefault() == 0 -> resolver returns null.
+        var pe = new PreviewEvaluator(new FakeCapture(255, 17, 95), new ColorMatcher(), new FakeMetrics(), new AccountRegistry());
+        var trig = ClientTrigger(new RegionRect(50, 60, 30, 40), new ColorCriteria(new Rgb(255, 17, 95), 10, ColorSamplingMode.SinglePixel));
+
+        Assert.Null(pe.EvaluateTrigger(trig));
+    }
+
+    [Fact]
+    public void EvaluateTrigger_ClientTrigger_AnchorsToFirstRunningAlt()
+    {
+        var accounts = new AccountRegistry();
+        accounts.Add(111, userId: 1);
+        var pe = new PreviewEvaluator(new FakeCapture(255, 17, 95), new ColorMatcher(), new FakeMetrics(), accounts);
+        var trig = ClientTrigger(new RegionRect(50, 60, 30, 40), new ColorCriteria(new Rgb(255, 17, 95), 10, ColorSamplingMode.SinglePixel));
+
+        var r = pe.EvaluateTrigger(trig);
+
+        Assert.NotNull(r);
+        Assert.True(r!.Matched);
+    }
+
+    [Fact]
+    public void EvaluateTrigger_NonColorTrigger_ReturnsNull()
+    {
+        var pe = new PreviewEvaluator(new FakeCapture(255, 17, 95), new ColorMatcher(), new FakeMetrics(), new AccountRegistry());
+        var trig = ScreenTrigger(new RegionRect(0, 0, 4, 4), new ColorCriteria(new Rgb(255, 17, 95), 10, ColorSamplingMode.SinglePixel));
+        trig.Mode = TriggerMode.Text;
+
+        Assert.Null(pe.EvaluateTrigger(trig));
     }
 }
