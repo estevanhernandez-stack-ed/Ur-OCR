@@ -37,7 +37,12 @@ public sealed class PluginRuntime
         Triggers = new TriggerStore();
         Settings = new SettingsStore();
         Foreground = new ForegroundWatcher(Accounts);
-        Preview = new Engine.PreviewEvaluator(Capture, Color, WindowMetrics, Accounts);
+        // Preview meter anchors to the alt you last focused; before you've
+        // focused any alt, fall back to the first running one.
+        Preview = new Engine.PreviewEvaluator(Capture, Color, WindowMetrics,
+            () => Foreground.LastForegroundAltPid != 0
+                ? Foreground.LastForegroundAltPid
+                : Accounts.Pids.FirstOrDefault());
     }
 
     public async Task StartAsync()

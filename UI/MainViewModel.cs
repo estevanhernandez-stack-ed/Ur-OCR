@@ -87,6 +87,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         timer.Tick += (_, _) => { foreach (var row in Triggers) row.Refresh(); };
         timer.Start();
+
+        // Remember the alt you last focused so the live meter previews against it
+        // (while editing, the Ur-OCR window is foreground, so the last alt sticks).
+        var fgTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        fgTimer.Tick += (_, _) => _runtime.Foreground.CaptureForegroundAlt();
+        fgTimer.Start();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
