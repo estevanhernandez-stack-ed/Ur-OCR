@@ -36,7 +36,7 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
         get => source.Action == TriggerAction.RunMacro;
         set
         {
-            if (value) { source.Action = TriggerAction.RunMacro; OnChanged(); OnChanged(nameof(IsKeyChord)); }
+            if (value) { source.Action = TriggerAction.RunMacro; ReloadMacros(); OnChanged(); OnChanged(nameof(IsKeyChord)); }
         }
     }
 
@@ -47,9 +47,26 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
         set { source.MacroId = value; OnChanged(); }
     }
 
-    private IReadOnlyList<UrTaskMacro>? _urTaskMacros;
-    /// <summary>Available Ur Task macros, lazily loaded on first access or StartPreview.</summary>
-    public IReadOnlyList<UrTaskMacro> UrTaskMacros => _urTaskMacros ??= Storage.UrTaskMacros.Load();
+    private IReadOnlyList<UrTaskMacro> _urTaskMacros = Array.Empty<UrTaskMacro>();
+    /// <summary>Available Ur Task macros. Re-read from disk every time the edit
+    /// panel opens (StartPreview) and when the action switches to RunMacro — a
+    /// macro recorded in Ur Task while this window is open must appear without a
+    /// restart. (The old load-once cache went stale exactly there.)</summary>
+    public IReadOnlyList<UrTaskMacro> UrTaskMacros => _urTaskMacros;
+
+    /// <summary>Diagnostic: the folder Ur-OCR reads Ur Task macros from, plus the
+    /// live count — surfaced in the picker's empty state so a mismatch is visible
+    /// instead of a silent blank dropdown.</summary>
+    public string MacroSourceHint =>
+        $"Looked in {Storage.UrTaskMacros.MacrosDir} — found {_urTaskMacros.Count}.";
+
+    /// <summary>Re-read the Ur Task macro library from disk and refresh the picker.</summary>
+    public void ReloadMacros()
+    {
+        _urTaskMacros = Storage.UrTaskMacros.Load();
+        OnChanged(nameof(UrTaskMacros));
+        OnChanged(nameof(MacroSourceHint));
+    }
     public string HitSummary => source.HitCount == 0
         ? "never fired"
         : $"fired {source.HitCount}× · {RelativeAge(source.LastFiredAt)}";
@@ -88,8 +105,9 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
 
     public void StartPreview()
     {
-        // Ensure macro list is loaded before the edit panel becomes visible.
-        _ = UrTaskMacros;
+        // Re-read the macro list every time the panel opens so newly-recorded
+        // Ur Task macros show up without an Ur-OCR restart.
+        ReloadMacros();
 
         if (source.Mode != TriggerMode.Color || source.Color is null) return;
         _previewTimer.Tick -= OnPreviewTick;
