@@ -28,6 +28,7 @@
                        Margin="0,0,0,6" />
             <Button Content="Re-pick region"
                     Style="{StaticResource SecondaryButton}"
+                    Command="{Binding RepickRegionCommand}"
                     Padding="10,6"
                     HorizontalAlignment="Left"
                     Margin="0,0,0,16" />

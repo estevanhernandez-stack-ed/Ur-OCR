@@ -7,7 +7,7 @@ using RoRoRo.UrOcr.Storage;
 
 namespace RoRoRo.UrOcr.UI;
 
-public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview) : INotifyPropertyChanged
+public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview, PluginRuntime runtime) : INotifyPropertyChanged
 {
     public Trigger Source => source;
     public Guid Id => source.Id;
@@ -17,6 +17,22 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
         get => source.Enabled;
         set { source.Enabled = value; OnChanged(); }
     }
+
+    // ── Region re-pick ───────────────────────────────────────────────────────
+
+    public System.Windows.Input.ICommand RepickRegionCommand => _repick ??= new RelayCommand(_ =>
+    {
+        var pick = new RegionPickerOverlay();
+        if (pick.ShowDialog() != true || pick.Picked is null) return;
+        var anchor = Engine.TriggerAnchor.ForPickedRegion(pick.Picked, runtime.Accounts.Pids, runtime.WindowMetrics);
+        source.Region = anchor.Region;
+        source.CoordSpace = anchor.CoordSpace;
+        source.RecordedClientW = anchor.RecordedClientW;
+        source.RecordedClientH = anchor.RecordedClientH;
+        runtime.Triggers.Update(source);
+        OnChanged("RegionModeText");   // added in Task 8
+    });
+    private System.Windows.Input.ICommand? _repick;
 
     // ── Action selector ───────────────────────────────────────────────────────
 
