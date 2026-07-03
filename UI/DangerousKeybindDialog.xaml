@@ -4,7 +4,10 @@
         Title="Confirm keybind"
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        Background="{StaticResource BgBrush}"
+        Foreground="{StaticResource WhiteBrush}"
+        FontFamily="{StaticResource BodyFont}">
     <StackPanel Margin="20" MinWidth="380">
 
         <TextBlock x:Name="Body"

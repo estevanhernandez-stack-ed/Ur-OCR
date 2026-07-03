@@ -5,7 +5,10 @@
         Title="Settings"
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        Background="{StaticResource BgBrush}"
+        Foreground="{StaticResource WhiteBrush}"
+        FontFamily="{StaticResource BodyFont}">
     <StackPanel Margin="20" MinWidth="340">
 
         <TextBlock Text="TICK RATE (HZ)"
