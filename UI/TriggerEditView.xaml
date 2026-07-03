@@ -56,12 +56,9 @@
                           DisplayMemberPath="Name"
                           SelectedValuePath="Id"
                           SelectedValue="{Binding MacroId, Mode=TwoWay}" />
-                <TextBlock Text="No Ur Task macros found — record one in Ur Task"
-                           FontSize="11"
-                           Foreground="{StaticResource MutedTextBrush}"
-                           Margin="0,6,0,0">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
+                <StackPanel Margin="0,6,0,0">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
                             <Setter Property="Visibility" Value="Collapsed" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding UrTaskMacros.Count}" Value="0">
@@ -69,8 +66,17 @@
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </TextBlock.Style>
-                </TextBlock>
+                    </StackPanel.Style>
+                    <TextBlock Text="No Ur Task macros found — record one in Ur Task."
+                               FontSize="11"
+                               Foreground="{StaticResource MutedTextBrush}" />
+                    <TextBlock Text="{Binding MacroSourceHint}"
+                               TextWrapping="Wrap"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="9"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               Margin="0,3,0,0" />
+                </StackPanel>
             </StackPanel>
 
             <TextBlock Text="COOLDOWN (MS)"
