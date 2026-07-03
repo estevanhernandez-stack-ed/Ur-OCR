@@ -79,11 +79,16 @@
                 </StackPanel>
             </StackPanel>
 
-            <TextBlock Text="COOLDOWN (MS)"
+            <TextBlock Text="COOLDOWN — DELAY BETWEEN FIRES (MS)"
                        Style="{StaticResource MetaLabel}"
                        Margin="0,0,0,4" />
             <TextBox Text="{Binding Source.CooldownMs}"
-                     Margin="0,0,0,16" />
+                     Margin="0,0,0,2" />
+            <TextBlock Text="Minimum wait before this trigger can fire again. Raise it to slow the trigger down."
+                       FontSize="11"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,16" />
 
             <!-- Live match meter (color triggers only) -->
             <TextBlock Text="LIVE MATCH METER"
