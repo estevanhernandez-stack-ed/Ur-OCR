@@ -30,7 +30,8 @@ public sealed class TriggerRowViewModel(Trigger source, PreviewEvaluator preview
         source.RecordedClientW = anchor.RecordedClientW;
         source.RecordedClientH = anchor.RecordedClientH;
         runtime.Triggers.Update(source);
-        OnChanged("RegionModeText");   // added in Task 8
+        OnChanged(nameof(RegionModeText));
+        OnChanged(nameof(IsWindowAnchored));
     });
     private System.Windows.Input.ICommand? _repick;
 
