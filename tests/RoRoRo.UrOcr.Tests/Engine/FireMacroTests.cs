@@ -2,6 +2,7 @@ using System.Drawing;
 using System.IO;
 using RoRoRo.UrOcr.Engine;
 using RoRoRo.UrOcr.Ipc;
+using RoRoRo.UrOcr.PluginHost;
 using RoRoRo.UrOcr.Storage;
 using Xunit;
 
@@ -26,6 +27,14 @@ public class FireMacroTests
     private sealed class FakeFg : IForegroundCheck { public bool IsAlt; public bool IsForegroundAnAlt() => IsAlt; public int GetForegroundPid() => 1; }
     private sealed class FakeElev : IElevationCheck { public bool Elev; public bool IsForegroundProcessLikelyElevated(int pid) => Elev; }
     private sealed class FakeKeys : IKeyPress { public int Pressed; public void Press(KeyCombo c) => Pressed++; }
+    private sealed class FakeMetrics : IWindowMetrics
+    {
+        public (int X, int Y)? Origin = (100, 200);
+        public (int W, int H)? Size = (800, 600);
+        public IntPtr HwndForPid(int pid) => new(0x10);
+        public (int X, int Y)? ClientOrigin(IntPtr h) => Origin;
+        public (int W, int H)? ClientSize(IntPtr h) => Size;
+    }
 
     private sealed class FakeMacroClient : IMacroRunClient
     {
@@ -50,7 +59,7 @@ public class FireMacroTests
         var keys = new FakeKeys();
         var log = new ActivityLog();
         var macroClient = new FakeMacroClient();
-        var c = new TriggerCoordinator(store, new FakeCapture(), color, text, fg, elev, keys, log, clock,
+        var c = new TriggerCoordinator(store, new FakeCapture(), color, text, fg, elev, keys, log, clock, new FakeMetrics(),
             onFirstFire: null, macroClient: macroClient);
         c.DryRun = dryRun;
         return (c, color, keys, log, store, macroClient);

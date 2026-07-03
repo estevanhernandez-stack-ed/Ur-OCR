@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.IO;
 using RoRoRo.UrOcr.Engine;
+using RoRoRo.UrOcr.PluginHost;
 using RoRoRo.UrOcr.Storage;
 using Xunit;
 
@@ -25,6 +26,14 @@ public class DryRunTests
     private sealed class FakeFg : IForegroundCheck { public bool IsAlt; public bool IsForegroundAnAlt() => IsAlt; public int GetForegroundPid() => 1; }
     private sealed class FakeElev : IElevationCheck { public bool Elev; public bool IsForegroundProcessLikelyElevated(int pid) => Elev; }
     private sealed class FakeKeys : IKeyPress { public int Pressed; public void Press(KeyCombo c) => Pressed++; }
+    private sealed class FakeMetrics : IWindowMetrics
+    {
+        public (int X, int Y)? Origin = (100, 200);
+        public (int W, int H)? Size = (800, 600);
+        public IntPtr HwndForPid(int pid) => new(0x10);
+        public (int X, int Y)? ClientOrigin(IntPtr h) => Origin;
+        public (int W, int H)? ClientSize(IntPtr h) => Size;
+    }
 
     private (TriggerCoordinator, FakeColor, FakeKeys, ActivityLog, TriggerStore) Make()
     {
@@ -37,7 +46,7 @@ public class DryRunTests
         var elev = new FakeElev();
         var keys = new FakeKeys();
         var log = new ActivityLog();
-        var c = new TriggerCoordinator(store, new FakeCapture(), color, text, fg, elev, keys, log, clock);
+        var c = new TriggerCoordinator(store, new FakeCapture(), color, text, fg, elev, keys, log, clock, new FakeMetrics());
         return (c, color, keys, log, store);
     }
 

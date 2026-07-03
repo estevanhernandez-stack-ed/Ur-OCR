@@ -23,6 +23,7 @@ public sealed class PluginRuntime
     public ToastService Toasts { get; } = new();
     public HotkeyService Hotkey { get; } = new();
     public Ipc.MacroRunClient MacroClient { get; } = new();
+    public IWindowMetrics WindowMetrics { get; } = new WindowMetrics();
     public TriggerCoordinator? Coordinator { get; private set; }
     public Engine.PreviewEvaluator Preview { get; }
     public DisplayCheckResult LastDpiCheck { get; private set; } = DisplayCheckResult.FirstRun;
@@ -47,7 +48,8 @@ public sealed class PluginRuntime
 
         Coordinator = new TriggerCoordinator(
             Triggers, Capture, Color, Text, Foreground, Elevation, Keys, Activity,
-            new SystemClock(), onFirstFire: t => Toasts.Show(t.Action == Storage.TriggerAction.RunMacro
+            new SystemClock(), WindowMetrics,
+            onFirstFire: t => Toasts.Show(t.Action == Storage.TriggerAction.RunMacro
                 ? $"✓ \"{t.Name}\" ran a macro"
                 : $"✓ \"{t.Name}\" fired ({t.Keybind.Key})"),
             macroClient: MacroClient)
