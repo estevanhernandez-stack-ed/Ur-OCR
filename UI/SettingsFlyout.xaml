@@ -6,8 +6,8 @@
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Background="{StaticResource BgBrush}"
-        Foreground="{StaticResource WhiteBrush}"
+        Background="{DynamicResource BgBrush}"
+        Foreground="{DynamicResource WhiteBrush}"
         FontFamily="{StaticResource BodyFont}">
     <StackPanel Margin="20" MinWidth="340">
 

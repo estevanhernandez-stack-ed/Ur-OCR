@@ -5,15 +5,15 @@
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Background="{StaticResource BgBrush}"
-        Foreground="{StaticResource WhiteBrush}"
+        Background="{DynamicResource BgBrush}"
+        Foreground="{DynamicResource WhiteBrush}"
         FontFamily="{StaticResource BodyFont}">
     <StackPanel Margin="20" MinWidth="380">
 
         <TextBlock x:Name="Body"
                    TextWrapping="Wrap"
                    FontSize="13"
-                   Foreground="{StaticResource WhiteBrush}"
+                   Foreground="{DynamicResource WhiteBrush}"
                    Margin="0,0,0,20" />
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

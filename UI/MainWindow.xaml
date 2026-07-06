@@ -11,8 +11,8 @@
         ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterScreen">
 
-    <Border Background="{StaticResource BgBrush}"
-            BorderBrush="{StaticResource DividerBrush}"
+    <Border Background="{DynamicResource BgBrush}"
+            BorderBrush="{DynamicResource DividerBrush}"
             BorderThickness="1"
             CornerRadius="10">
         <Grid>
@@ -41,7 +41,7 @@
                     <TextBlock Text="RORORO UR OCR"
                                FontFamily="{StaticResource MonoFont}"
                                FontSize="9"
-                               Foreground="{StaticResource CyanBrush}"
+                               Foreground="{DynamicResource CyanBrush}"
                                VerticalAlignment="Center" />
                 </StackPanel>
 
@@ -52,21 +52,21 @@
                             Width="38"
                             Background="Transparent"
                             BorderThickness="0"
-                            Foreground="{StaticResource MutedTextBrush}"
+                            Foreground="{DynamicResource MutedTextBrush}"
                             FontSize="14"
                             Click="OnTitleBarMinimizeClicked" />
                     <Button Content="▢"
                             Width="38"
                             Background="Transparent"
                             BorderThickness="0"
-                            Foreground="{StaticResource MutedTextBrush}"
+                            Foreground="{DynamicResource MutedTextBrush}"
                             FontSize="11"
                             Click="OnTitleBarMaximizeClicked" />
                     <Button Content="✕"
                             Width="38"
                             Background="Transparent"
                             BorderThickness="0"
-                            Foreground="{StaticResource MutedTextBrush}"
+                            Foreground="{DynamicResource MutedTextBrush}"
                             FontSize="12"
                             Click="OnTitleBarCloseClicked" />
                 </StackPanel>
@@ -77,8 +77,8 @@
 
             <!-- Header strip: status + action buttons -->
             <Border Grid.Row="2"
-                    Background="{StaticResource RowBgBrush}"
-                    BorderBrush="{StaticResource DividerBrush}"
+                    Background="{DynamicResource RowBgBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="0,1,0,1"
                     Padding="16,10">
                 <Grid>
@@ -89,12 +89,12 @@
 
                     <!-- Status text with status dot -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse Width="8" Height="8" Fill="{StaticResource CyanBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                        <Ellipse Width="8" Height="8" Fill="{DynamicResource CyanBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
                         <TextBlock Text="{Binding StatusText}"
                                    FontFamily="{StaticResource BodyFont}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource WhiteBrush}"
+                                   Foreground="{DynamicResource WhiteBrush}"
                                    VerticalAlignment="Center" />
                     </StackPanel>
 
@@ -154,14 +154,14 @@
                                                    FontSize="12" />
                                         <TextBlock Text="{Binding HitSummary}"
                                                    FontSize="10"
-                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
                                                    Margin="0,2,0,0" />
                                     </StackPanel>
                                     <Button Grid.Column="2"
                                             Content="&#x2715;"
                                             Background="Transparent"
                                             BorderThickness="0"
-                                            Foreground="{StaticResource MutedTextBrush}"
+                                            Foreground="{DynamicResource MutedTextBrush}"
                                             FontSize="12"
                                             Padding="8,2"
                                             VerticalAlignment="Center"
@@ -178,7 +178,7 @@
                 <!-- Divider -->
                 <Border Grid.Column="1"
                         Width="1"
-                        Background="{StaticResource DividerBrush}" />
+                        Background="{DynamicResource DividerBrush}" />
 
                 <!-- Edit panel -->
                 <ContentControl Grid.Column="2"
@@ -194,7 +194,7 @@
 
             <!-- Activity panel (bottom collapsible) -->
             <Border Grid.Row="4"
-                    BorderBrush="{StaticResource DividerBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="0,1,0,0">
                 <local:ActivityPanel x:Name="Activity" />
             </Border>

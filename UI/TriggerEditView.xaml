@@ -23,7 +23,7 @@
                        Style="{StaticResource MetaLabel}"
                        Margin="0,0,0,4" />
             <TextBlock Text="{Binding RegionModeText}"
-                       Foreground="{StaticResource MutedTextBrush}"
+                       Foreground="{DynamicResource MutedTextBrush}"
                        FontSize="11"
                        TextWrapping="Wrap"
                        Margin="0,0,0,6" />
@@ -71,12 +71,12 @@
                     </StackPanel.Style>
                     <TextBlock Text="No Ur Task macros found — record one in Ur Task."
                                FontSize="11"
-                               Foreground="{StaticResource MutedTextBrush}" />
+                               Foreground="{DynamicResource MutedTextBrush}" />
                     <TextBlock Text="{Binding MacroSourceHint}"
                                TextWrapping="Wrap"
                                FontFamily="{StaticResource MonoFont}"
                                FontSize="9"
-                               Foreground="{StaticResource MutedTextBrush}"
+                               Foreground="{DynamicResource MutedTextBrush}"
                                Margin="0,3,0,0" />
                 </StackPanel>
             </StackPanel>
@@ -88,7 +88,7 @@
                      Margin="0,0,0,2" />
             <TextBlock Text="Minimum wait before this trigger can fire again. Raise it to slow the trigger down."
                        FontSize="11"
-                       Foreground="{StaticResource MutedTextBrush}"
+                       Foreground="{DynamicResource MutedTextBrush}"
                        TextWrapping="Wrap"
                        Margin="0,0,0,16" />
 
@@ -101,12 +101,12 @@
                 <!-- Target color swatch -->
                 <StackPanel Margin="0,0,16,0">
                     <TextBlock Text="Target"
-                               Foreground="{StaticResource MutedTextBrush}"
+                               Foreground="{DynamicResource MutedTextBrush}"
                                FontSize="10"
                                Margin="0,0,0,4" />
                     <Border Width="32" Height="32"
                             CornerRadius="4"
-                            BorderBrush="{StaticResource DividerBrush}"
+                            BorderBrush="{DynamicResource DividerBrush}"
                             BorderThickness="1"
                             Background="{Binding PreviewTargetBrush}" />
                 </StackPanel>
@@ -114,12 +114,12 @@
                 <!-- Sampled color swatch -->
                 <StackPanel Margin="0,0,16,0">
                     <TextBlock Text="Sampled"
-                               Foreground="{StaticResource MutedTextBrush}"
+                               Foreground="{DynamicResource MutedTextBrush}"
                                FontSize="10"
                                Margin="0,0,0,4" />
                     <Border Width="32" Height="32"
                             CornerRadius="4"
-                            BorderBrush="{StaticResource DividerBrush}"
+                            BorderBrush="{DynamicResource DividerBrush}"
                             BorderThickness="1"
                             Background="{Binding PreviewSampledBrush}" />
                 </StackPanel>
@@ -129,7 +129,7 @@
                     <TextBlock Text="{Binding PreviewDistanceText}"
                                FontFamily="{StaticResource MonoFont}"
                                FontSize="13"
-                               Foreground="{StaticResource WhiteBrush}"
+                               Foreground="{DynamicResource WhiteBrush}"
                                Margin="0,0,0,6" />
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse Width="10" Height="10"
@@ -148,7 +148,7 @@
                         </Ellipse>
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedTextBrush}">
+                                   Foreground="{DynamicResource MutedTextBrush}">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Text" Value="no match" />

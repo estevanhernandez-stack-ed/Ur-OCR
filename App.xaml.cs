@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using RoRoRo.UrOcr.Theming;
 using RoRoRo.UrOcr.UI;
 
 namespace RoRoRo.UrOcr;
@@ -8,10 +9,17 @@ public partial class App : Application
 {
     public PluginRuntime Runtime { get; } = new();
     public TrayService Tray { get; private set; } = null!;
+    private HostThemeService? _theme;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Sync brushes to the RoRoRo host's active theme before the first
+        // await lets the StartupUri window render, then follow switches live.
+        _theme = new HostThemeService();
+        _theme.Start();
+
         await Runtime.StartAsync();
 
         Tray = new TrayService();
@@ -41,6 +49,7 @@ public partial class App : Application
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        try { _theme?.Dispose(); } catch { }
         Tray?.Dispose();
         await Runtime.StopAsync();
         base.OnExit(e);
