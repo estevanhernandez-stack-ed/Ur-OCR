@@ -5,8 +5,8 @@
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
-        Background="{StaticResource BgBrush}"
-        Foreground="{StaticResource WhiteBrush}"
+        Background="{DynamicResource BgBrush}"
+        Foreground="{DynamicResource WhiteBrush}"
         FontFamily="{StaticResource BodyFont}">
     <StackPanel Margin="20" MaxWidth="820">
 
@@ -15,10 +15,10 @@
                    Margin="0,0,0,8" />
         <TextBlock Text="Click a pixel in the captured region to set the target color."
                    FontSize="12"
-                   Foreground="{StaticResource MutedTextBrush}"
+                   Foreground="{DynamicResource MutedTextBrush}"
                    Margin="0,0,0,12" />
 
-        <Border BorderBrush="{StaticResource DividerBrush}"
+        <Border BorderBrush="{DynamicResource DividerBrush}"
                 BorderThickness="1"
                 CornerRadius="4"
                 Margin="0,0,0,12"
@@ -38,7 +38,7 @@
             </Grid.ColumnDefinitions>
             <Border Grid.Column="0"
                     Width="64" Height="64"
-                    BorderBrush="{StaticResource DividerBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="1"
                     CornerRadius="4"
                     Margin="0,0,14,0">
@@ -51,7 +51,7 @@
                            FontSize="13"
                            Margin="0,0,0,8" />
                 <TextBlock Style="{StaticResource MetaLabel}" Margin="0,0,0,4">
-                    TOLERANCE: <Run x:Name="ToleranceValue" Text="15" Foreground="{StaticResource CyanBrush}" />
+                    TOLERANCE: <Run x:Name="ToleranceValue" Text="15" Foreground="{DynamicResource CyanBrush}" />
                 </TextBlock>
                 <Slider x:Name="ToleranceSlider"
                         Minimum="0"
