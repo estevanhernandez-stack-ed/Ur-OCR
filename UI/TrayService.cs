@@ -7,6 +7,7 @@ public sealed class TrayService : IDisposable
 {
     private readonly TaskbarIcon _icon;
     public event Action? OpenRequested;
+    public event Action? OpenLogFolderRequested;
     public event Action? TogglePauseRequested;
     public event Action? QuitRequested;
 
@@ -29,11 +30,14 @@ public sealed class TrayService : IDisposable
         open.Click += (_, _) => OpenRequested?.Invoke();
         var pause = new System.Windows.Controls.MenuItem { Header = "Pause all watchers (F9)" };
         pause.Click += (_, _) => TogglePauseRequested?.Invoke();
+        var logs = new System.Windows.Controls.MenuItem { Header = "Open log folder" };
+        logs.Click += (_, _) => OpenLogFolderRequested?.Invoke();
         var quit = new System.Windows.Controls.MenuItem { Header = "Quit" };
         quit.Click += (_, _) => QuitRequested?.Invoke();
         menu.Items.Add(open);
         menu.Items.Add(new System.Windows.Controls.Separator());
         menu.Items.Add(pause);
+        menu.Items.Add(logs);
         menu.Items.Add(new System.Windows.Controls.Separator());
         menu.Items.Add(quit);
         _icon.ContextMenu = menu;
