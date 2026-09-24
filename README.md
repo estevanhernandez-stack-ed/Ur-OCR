@@ -53,3 +53,7 @@ dotnet build
 dotnet test
 pwsh ./build/build-plugin.ps1
 ```
+
+## License
+
+Apache License 2.0, © 2026 626Labs LLC. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The contract bindings (`ROROROblox.PluginContract`) come from the parent RoRoRo repository under its own license (MIT).
