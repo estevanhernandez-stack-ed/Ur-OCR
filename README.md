@@ -2,6 +2,10 @@
 
 > A RoRoRo plugin that watches user-defined screen regions for OCR text or color triggers and fires keybinds when they match. Built for clan members who want a banner to appear and the right key to press itself.
 
+## License
+
+Apache License 2.0, © 2026 626Labs LLC. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Releases published before 2026-09-24 were released under the MIT License. The contract bindings (`ROROROblox.PluginContract`) come from the parent RoRoRo repository under its own license (MIT).
+
 A 626 Labs product · *Imagine Something Else*.
 
 ## Install
