@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Colour triggers check the pixel you picked.** The picker took the colour at the pixel you clicked, but the trigger checked the region's centre, so any pick off-centre compared the wrong spot. New colour triggers store the pick point and average the same 5x5 box at pick time and at check time, scaled with window-anchored regions. Triggers made before this keep their old behaviour.
+
+### Added
+
+- **Two-state colour rule.** A colour trigger can carry the colour of the opposite state (the grey of a locked tile, the red of "Off"); it matches only when it is within tolerance of the target and closer to the target than to that other colour. Stored and evaluated now; the editor has no control for it yet.
+- The activity log names the colour it saw and its distance on every colour check, e.g. `green #8BE03A d=4.1`, in the same words Ur Task uses.
+
 ## 0.4.0 — 2026-07-03
 
 ### Added

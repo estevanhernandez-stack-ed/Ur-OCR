@@ -13,6 +13,8 @@ public partial class ColorPickerDialog : Window
 {
     private readonly Bitmap _sourceBitmap;
     public Rgb? SelectedColor { get; private set; }
+    public PickPoint? SelectedPoint { get; private set; }
+    public SampleBox SelectedBox { get; } = new();
     public int Tolerance { get; private set; } = 15;
 
     public ColorPickerDialog(Bitmap region)
@@ -29,10 +31,12 @@ public partial class ColorPickerDialog : Window
         var py = (int)pos.Y;
         if (px < 0 || py < 0 || px >= _sourceBitmap.Width || py >= _sourceBitmap.Height) return;
 
-        var pixel = _sourceBitmap.GetPixel(px, py);
-        SelectedColor = new Rgb(pixel.R, pixel.G, pixel.B);
-        SelectedRgbLabel.Text = $"RGB ({pixel.R}, {pixel.G}, {pixel.B})  at ({px}, {py}) within region";
-        ColorSwatch.Fill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(pixel.R, pixel.G, pixel.B));
+        // Average the same box the trigger will check, around the clicked pixel.
+        SelectedPoint = new PickPoint(px, py);
+        var avg = Engine.ColorMatcher.AverageBox(_sourceBitmap, SelectedPoint, SelectedBox);
+        SelectedColor = avg;
+        SelectedRgbLabel.Text = $"{Engine.ColorNamer.Describe(avg)}  ({SelectedBox.W}x{SelectedBox.H} average at {px}, {py})";
+        ColorSwatch.Fill = new SolidColorBrush(System.Windows.Media.Color.FromRgb((byte)avg.R, (byte)avg.G, (byte)avg.B));
         OkButton.IsEnabled = true;
     }
 

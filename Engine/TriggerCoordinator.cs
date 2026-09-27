@@ -11,6 +11,9 @@ public interface IColorMatchEngine
 {
     bool Matches(Bitmap b, ColorCriteria c);
     ColorMatchResult Evaluate(Bitmap b, ColorCriteria c);
+    /// <summary>recordedRegion is the trigger's stored region, so a pick point
+    /// scales when a client-anchored capture comes back at a different size.</summary>
+    ColorMatchResult Evaluate(Bitmap b, ColorCriteria c, RegionRect recordedRegion) => Evaluate(b, c);
 }
 public interface ITextMatchEngine
 {
@@ -129,11 +132,15 @@ public sealed class TriggerCoordinator(
                 var (m, t) = trig.OcrPreprocess
                     ? await text.RunWithPreprocessAsync(bmp, trig.Text)
                     : await text.RunAsync(bmp, trig.Text);
-                matched = m; detail = t;
+                matched = m; detail = t.Length > 0 ? $"OCR: {t}" : "";
             }
             else if (trig.Mode == TriggerMode.Color && trig.Color is not null)
             {
-                matched = color.Matches(bmp, trig.Color);
+                var r = color.Evaluate(bmp, trig.Color, trig.Region);
+                matched = r.Matched;
+                // Logged every match so the default tolerance can be tuned from real runs.
+                detail = $"{ColorNamer.Describe(r.Sampled)} d={r.Distance:F1}"
+                    + (r.DistanceToOther is { } o ? $" other={o:F1}" : "");
             }
             else { continue; }
 
@@ -147,7 +154,7 @@ public sealed class TriggerCoordinator(
                 if (DryRun)
                 {
                     log.Record(trig.Id, trig.Name, ActivityKind.WouldFire,
-                        detail.Length > 0 ? $"OCR: {detail}" : null);
+                        detail.Length > 0 ? detail : null);
                 }
                 else if (trig.Action == TriggerAction.RunMacro && macroClient is not null && trig.MacroId is not null)
                 {
@@ -162,14 +169,14 @@ public sealed class TriggerCoordinator(
                     keys.Press(trig.Keybind);
                     store.MarkFired(trig.Id, now);
                     log.Record(trig.Id, trig.Name, ActivityKind.Fired,
-                        detail.Length > 0 ? $"OCR: {detail}" : null);
+                        detail.Length > 0 ? detail : null);
                     if (!trig.FirstFireConfirmed) onFirstFire?.Invoke(trig);
                 }
             }
             else if (!matched)
             {
                 log.Record(trig.Id, trig.Name, ActivityKind.NoMatch,
-                    detail.Length > 0 ? $"OCR: {detail}" : null);
+                    detail.Length > 0 ? detail : null);
             }
             else if (!cooldownReady)
             {

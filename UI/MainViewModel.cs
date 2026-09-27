@@ -54,7 +54,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 RecordedClientW = anchor.RecordedClientW,
                 RecordedClientH = anchor.RecordedClientH,
                 Mode = TriggerMode.Color,
-                Color = new ColorCriteria(colorPicker.SelectedColor, colorPicker.Tolerance, ColorSamplingMode.SinglePixel),
+                Color = new ColorCriteria(colorPicker.SelectedColor, colorPicker.Tolerance, ColorSamplingMode.SinglePixel,
+                    Point: colorPicker.SelectedPoint, Box: colorPicker.SelectedBox),
                 Keybind = new KeyCombo("F", Array.Empty<string>()),
             };
             _runtime.Triggers.Add(t);

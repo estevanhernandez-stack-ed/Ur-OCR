@@ -24,6 +24,6 @@ public sealed class PreviewEvaluator(
         var region = TriggerRegionResolver.Resolve(trig, anchorPid, metrics);
         if (region is null || region.Width < 1 || region.Height < 1) return null;
         using var bmp = capture.Capture(region);
-        return color.Evaluate(bmp, trig.Color);
+        return color.Evaluate(bmp, trig.Color, trig.Region);
     }
 }

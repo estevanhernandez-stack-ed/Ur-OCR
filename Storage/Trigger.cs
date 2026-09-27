@@ -11,7 +11,35 @@ public sealed record RegionRect(int X, int Y, int Width, int Height);
 public sealed record Rgb(int R, int G, int B);
 
 public sealed record TextCriteria(string Needle, bool CaseSensitive, TextMatchType MatchType);
-public sealed record ColorCriteria(Rgb TargetRgb, int ToleranceRgb, ColorSamplingMode SamplingMode);
+/// <summary>Where the picker was clicked, in pixels from the recorded region's top-left.</summary>
+public sealed record PickPoint(int X, int Y);
+
+/// <summary>
+/// The box averaged around a PickPoint: an offset from the point plus a size.
+/// Same shape as Ur Task's CheckBox ({ offsetX, offsetY, w, h }), so both
+/// plugins sample colour the same way.
+/// </summary>
+public sealed record SampleBox(int OffsetX = -2, int OffsetY = -2, int W = 5, int H = 5)
+{
+    public const int MaxSide = 9;
+    [JsonIgnore]
+    public bool IsValid => W >= 1 && H >= 1 && W <= MaxSide && H <= MaxSide;
+}
+
+/// <summary>
+/// Colour trigger criteria. When <see cref="Box"/> is set, the check averages
+/// that box around <see cref="Point"/>, the same box the picker averaged, and
+/// <see cref="SamplingMode"/> is ignored (new triggers write SinglePixel so an
+/// older build still loads them). Without a box, legacy behaviour: SinglePixel
+/// reads the region centre, RegionAverage the whole region. <see cref="Other"/>
+/// is the opposite state's colour: matched means within tolerance of the
+/// target AND closer to it than to Other.
+/// </summary>
+public sealed record ColorCriteria(
+    Rgb TargetRgb, int ToleranceRgb, ColorSamplingMode SamplingMode,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PickPoint? Point = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SampleBox? Box = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Rgb? Other = null);
 
 public sealed record KeyCombo(string Key, IReadOnlyList<string> Modifiers);
 
