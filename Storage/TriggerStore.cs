@@ -132,6 +132,11 @@ public sealed class TriggerStore
         foreach (var t in _state.Triggers)
         {
             if (string.IsNullOrEmpty(t.CoordSpace)) { t.CoordSpace = Trigger.CoordSpaceScreen; changed = true; }
+            // 0.4.0's editor bound the cooldown box to a raw int, so a legacy trigger can carry
+            // a negative CooldownMs. 0.4.0's check (elapsed >= CooldownMs) was always true for a
+            // negative value, i.e. "always ready" -- the same as 0 -- so repair it to 0 rather
+            // than let TriggerValidation reject the trigger outright and take it out of service.
+            if (t.CooldownMs < 0) { t.CooldownMs = 0; changed = true; }
         }
         return changed;
     }

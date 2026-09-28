@@ -60,6 +60,23 @@ public class TriggerStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_legacy_negative_cooldown_is_repaired_to_zero_on_load()
+    {
+        // 0.4.0's editor let -1 through; its ready check treated a negative cooldown the
+        // same as 0 ("always ready"). 0.5.0's validation now rejects a negative cooldown
+        // outright, so a legacy trigger must be repaired on load rather than go dead.
+        var s = new TriggerStore(_tempPath);
+        var t = NewTrigger();
+        t.CooldownMs = -1;
+        s.Add(t);
+
+        var reloaded = new TriggerStore(_tempPath);
+
+        Assert.Equal(0, reloaded.All[0].CooldownMs);
+        Assert.Null(TriggerValidation.Validate(reloaded.All[0], Array.Empty<RingDefinition>()));
+    }
+
+    [Fact]
     public void Corrupted_file_backed_up_and_recovered_empty()
     {
         File.WriteAllText(_tempPath, "{not valid json");
