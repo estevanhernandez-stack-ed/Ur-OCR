@@ -1,0 +1,111 @@
+using System.IO;
+using RoRoRo.UrOcr.Storage;
+using Xunit;
+
+namespace RoRoRo.UrOcr.Tests.Storage;
+
+public class PulseImporterTests
+{
+    internal static IReadOnlyList<UrTaskMacro> Macros(params string[] leaveOut) =>
+        RingImporterTests.Macros()
+            .Append(new UrTaskMacro("id-off", "Auto Mine off (checked)"))
+            .Append(new UrTaskMacro("id-on", "Auto Mine on (checked)"))
+            .Concat(MeasuredRing.RingOrder.Select(n => new UrTaskMacro($"id-clear-{n}", $"Clear spot {n}")))
+            .Where(m => !leaveOut.Contains(m.Name))
+            .ToList();
+
+    internal static PulseConfig Entry(long account = 42, int target = 2) => new(account, "mine8", target);
+
+    private static TriggerStore StoreWithRing()
+    {
+        var store = new TriggerStore(Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".json"));
+        RingImporter.Apply(store, RingImporterTests.Measured(), RingImporterTests.Macros());
+        return store;
+    }
+
+    private static IReadOnlyList<PulseConfig> Build(TriggerStore store, IReadOnlyList<UrTaskMacro>? macros, params PulseConfig[] entries) =>
+        PulseImporter.Build(new PulseFile(1, entries), store.Rings, store.All, macros ?? Macros());
+
+    [Fact]
+    public void Builds_one_pulse_per_account_with_the_macros_looked_up()
+    {
+        var pulses = Build(StoreWithRing(), null, Entry(42, 2), Entry(43, 1));
+
+        Assert.Equal(new long[] { 42, 43 }, pulses.Select(p => p.AccountUserId));
+        var m = pulses[0].Macros!;
+        Assert.Equal("id-off", m.AutoMineOff);
+        Assert.Equal("id-on", m.AutoMineOn);
+        Assert.Equal("id-go-to-top", m.GoToTop);
+        Assert.Equal(MeasuredRing.RingOrder.Select(n => $"id-clear-{n}"), m.Clear);
+    }
+
+    [Fact]
+    public void Macros_in_the_file_are_replaced_by_the_ones_looked_up()
+    {
+        var entry = Entry() with { Macros = new PulseMacros("x", "y", "z", new[] { "a" }) };
+
+        var p = Assert.Single(Build(StoreWithRing(), null, entry));
+
+        Assert.Equal("id-off", p.Macros!.AutoMineOff);
+    }
+
+    [Fact]
+    public void A_target_past_the_rings_layers_is_refused()
+    {
+        var ex = Assert.Throws<InvalidDataException>(() => Build(StoreWithRing(), null, Entry(target: 3)));
+
+        Assert.Contains("Account 42", ex.Message);
+        Assert.Contains("targetLayer must be 1 to 2", ex.Message);
+    }
+
+    [Fact]
+    public void A_missing_clear_macro_is_refused_by_name()
+    {
+        var ex = Assert.Throws<InvalidDataException>(() => Build(StoreWithRing(), Macros("Clear spot W"), Entry()));
+
+        Assert.Contains("Clear spot W", ex.Message);
+    }
+
+    [Fact]
+    public void The_same_account_twice_is_refused()
+    {
+        var ex = Assert.Throws<InvalidDataException>(() => Build(StoreWithRing(), null, Entry(42), Entry(42, 1)));
+
+        Assert.Contains("42 is listed twice", ex.Message);
+    }
+
+    [Fact]
+    public void Without_the_ring_it_says_to_import_the_ring_first()
+    {
+        var empty = new TriggerStore(Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".json"));
+
+        var ex = Assert.Throws<InvalidDataException>(() => Build(empty, null, Entry()));
+
+        Assert.Contains("import the ring first", ex.Message);
+    }
+
+    [Fact]
+    public void A_wrong_schema_or_an_empty_file_is_refused()
+    {
+        var store = StoreWithRing();
+
+        Assert.Contains("schema must be 1",
+            Assert.Throws<InvalidDataException>(() => PulseImporter.Build(new PulseFile(2, new[] { Entry() }), store.Rings, store.All, Macros())).Message);
+        Assert.Contains("pulses is empty",
+            Assert.Throws<InvalidDataException>(() => PulseImporter.Build(new PulseFile(1, Array.Empty<PulseConfig>()), store.Rings, store.All, Macros())).Message);
+    }
+
+    [Fact]
+    public void Apply_replaces_the_accounts_pulse_on_reimport_and_a_bad_file_writes_nothing()
+    {
+        var store = StoreWithRing();
+        PulseImporter.Apply(store, new PulseFile(1, new[] { Entry(target: 2) }), Macros());
+        PulseImporter.Apply(store, new PulseFile(1, new[] { Entry(target: 1) }), Macros());
+
+        Assert.Throws<InvalidDataException>(() =>
+            PulseImporter.Apply(store, new PulseFile(1, new[] { Entry(43, 1), Entry(44, 9) }), Macros()));
+
+        var p = Assert.Single(store.Pulses);
+        Assert.Equal(1, p.TargetLayer);
+    }
+}

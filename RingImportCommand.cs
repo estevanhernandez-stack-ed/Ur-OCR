@@ -70,7 +70,7 @@ internal static class RingImportCommand
         return code;
     }
 
-    private static bool OtherInstanceRunning()
+    internal static bool OtherInstanceRunning()
     {
         var me = Environment.ProcessId;
         return Process.GetProcessesByName("RoRoRo.UrOcr").Any(p => p.Id != me);
