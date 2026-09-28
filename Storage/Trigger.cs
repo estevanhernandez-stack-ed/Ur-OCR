@@ -135,6 +135,8 @@ public sealed class TriggersFile
     public int SchemaVersion { get; set; } = 2;
     public List<RingDefinition> Rings { get; set; } = new();
     public List<Trigger> Triggers { get; set; } = new();
+    /// <summary>Ore stop pulse loops, one per account (0.6.0, additive: absent loads as empty).</summary>
+    public List<PulseConfig> Pulses { get; set; } = new();
 }
 
 internal static class TriggerJsonOptions

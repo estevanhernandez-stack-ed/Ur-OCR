@@ -31,6 +31,11 @@ public sealed class TriggerStore
         get { lock (_lock) return _state.Rings.ToArray(); }
     }
 
+    public IReadOnlyList<PulseConfig> Pulses
+    {
+        get { lock (_lock) return _state.Pulses.ToArray(); }
+    }
+
     /// <summary>Adds the trigger, or replaces the one with the same id.</summary>
     public void Upsert(Trigger t)
     {
@@ -49,6 +54,17 @@ public sealed class TriggerStore
         {
             var idx = _state.Rings.FindIndex(x => string.Equals(x.Id, ring.Id, StringComparison.OrdinalIgnoreCase));
             if (idx < 0) _state.Rings.Add(ring); else _state.Rings[idx] = ring;
+            WriteNow();
+        }
+    }
+
+    /// <summary>Adds the pulse, or replaces the one for the same account: one pulse per account.</summary>
+    public void UpsertPulse(PulseConfig pulse)
+    {
+        lock (_lock)
+        {
+            var idx = _state.Pulses.FindIndex(x => x.AccountUserId == pulse.AccountUserId);
+            if (idx < 0) _state.Pulses.Add(pulse); else _state.Pulses[idx] = pulse;
             WriteNow();
         }
     }
@@ -112,6 +128,7 @@ public sealed class TriggerStore
             _state = JsonSerializer.Deserialize<TriggersFile>(json, TriggerJsonOptions.Default)
                      ?? new TriggersFile();
             _state.Rings ??= new();   // "rings": null in a hand-edited file
+            _state.Pulses ??= new();  // "pulses": null in a hand-edited file
             if (MigrateToV2()) WriteNow(); // sticky
         }
         catch (JsonException)
