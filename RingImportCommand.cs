@@ -60,13 +60,7 @@ internal static class RingImportCommand
             }
         }
 
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
-            File.WriteAllLines(reportPath, lines);
-        }
-        catch (IOException) { }
-        foreach (var line in lines) diag($"ring import: {line}");
+        ImportReport.Write(reportPath, lines, "ring import", diag);
         return code;
     }
 

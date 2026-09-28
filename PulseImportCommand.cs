@@ -57,13 +57,7 @@ internal static class PulseImportCommand
             }
         }
 
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
-            File.WriteAllLines(reportPath, lines);
-        }
-        catch (IOException) { }
-        foreach (var line in lines) diag($"pulse import: {line}");
+        ImportReport.Write(reportPath, lines, "pulse import", diag);
         return code;
     }
 
