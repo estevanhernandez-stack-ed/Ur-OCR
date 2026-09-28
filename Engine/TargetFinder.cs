@@ -8,8 +8,9 @@ public sealed record FinderTarget(int X, int Y, bool Ore, string Label);
 
 /// <summary>
 /// Where to clear on a calm frame (spec "Reach, measured, and the ore finder"). Ore first: samples
-/// every Pitch / 4 pixels, keeps those within the tolerance of a palette colour, clusters adjacent
-/// hits (4-connected; a patch needs MinPatchSamples) and takes each patch's centre. Then stone: a grid
+/// every Pitch / 4 pixels within reach ((RadiusBlocks + 1) blocks of the character), keeps those
+/// within the tolerance of a palette colour, clusters adjacent hits (4-connected; a patch needs
+/// MinPatchSamples) and takes each patch's centre. Then stone: a grid
 /// every Pitch out to RadiusBlocks blocks around the character, less the points inside an ore patch.
 /// Points whose outline box would leave the client are dropped. Ore nearest first, then stone nearest
 /// first, at most MaxPoints. Every coordinate is in the finder's measured client pixels; the frame
@@ -28,10 +29,16 @@ public static class TargetFinder
         var rows = f.ClientH / step;
         int Centre(int cell) => cell * step + step / 2;
 
+        // Ore is looked for only within reach: a block past the grid's edge would be skipped anyway,
+        // and a light palette colour (white quartz) would otherwise match HUD panels across the view.
+        var reach = (long)(f.RadiusBlocks + 1) * f.Pitch;
+        bool InReach(int x, int y) =>
+            (long)(x - f.CenterX) * (x - f.CenterX) + (long)(y - f.CenterY) * (y - f.CenterY) <= reach * reach;
+
         var hit = new bool[cols, rows];
         for (var gy = 0; gy < rows; gy++)
             for (var gx = 0; gx < cols; gx++)
-                hit[gx, gy] = IsOre(Sample(frame, f, Centre(gx), Centre(gy)), f);
+                hit[gx, gy] = InReach(Centre(gx), Centre(gy)) && IsOre(Sample(frame, f, Centre(gx), Centre(gy)), f);
 
         var inOre = new bool[cols, rows];
         var seen = new bool[cols, rows];

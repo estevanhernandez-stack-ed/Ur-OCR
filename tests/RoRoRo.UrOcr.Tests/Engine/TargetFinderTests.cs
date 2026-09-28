@@ -52,7 +52,8 @@ public class TargetFinderTests
     [Fact]
     public void Ore_patches_go_nearest_first()
     {
-        var targets = TargetFinder.Find(Frame(400, 300, (340, 130, 40, 40, Cyan), (180, 210, 40, 40, Cyan)), Setup());
+        var targets = TargetFinder.Find(Frame(400, 300, (340, 130, 40, 40, Cyan), (180, 210, 40, 40, Cyan)),
+            Setup(radius: 4));                                      // reach 200 px takes in the patch at 160
 
         Assert.Equal(
             new[] { new FinderTarget(200, 230, true, "ore 1"), new FinderTarget(360, 150, true, "ore 2") },
@@ -120,12 +121,26 @@ public class TargetFinderTests
             for (var px = 0; px < 13; px++)
                 paint.Add((px * 30, py * 30, 20, 10, Cyan));        // 130 two-sample patches, 108 of them placeable
 
-        var targets = TargetFinder.Find(Frame(400, 300, paint.ToArray()), Setup());
+        var targets = TargetFinder.Find(Frame(400, 300, paint.ToArray()), Setup(radius: 5));   // reach 240 px
 
         Assert.Equal(TargetFinder.MaxPoints, targets.Count);
         Assert.All(targets, t => Assert.True(t.Ore));
         var d2 = targets.Select(t => (t.X - 200) * (t.X - 200) + (t.Y - 150) * (t.Y - 150)).ToList();
         Assert.Equal(d2.OrderBy(d => d), d2);
+    }
+
+    [Fact]
+    public void Ore_past_reach_is_not_looked_for_so_a_white_hud_panel_is_not_quartz()
+    {
+        var white = new Rgb(240, 240, 240);
+        var setup = Setup(ore: new[] { new OreColour("white quartz", white) });   // reach (2 + 1) x 40 = 120 px
+
+        var targets = TargetFinder.Find(Frame(400, 300,
+            (360, 10, 40, 40, white),                               // a HUD panel in the corner, 216 px out
+            (260, 130, 40, 40, white)), setup);                     // quartz a block and a half from the character
+
+        Assert.Equal(new[] { new FinderTarget(280, 150, true, "ore 1") }, targets.Where(t => t.Ore));
+        Assert.True(setup.BoxFits(380, 30));                        // it would fit: reach alone keeps it out
     }
 
     [Fact]
