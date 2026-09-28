@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace RoRoRo.UrOcr.Storage;
 
-public enum TriggerMode { Text, Color }
+public enum TriggerMode { Text, Color, Layer }
 public enum TextMatchType { Contains, Exact, Regex }
 public enum ColorSamplingMode { SinglePixel, RegionAverage }
 public enum TriggerAction { KeyChord, RunMacro }
@@ -113,6 +113,17 @@ public sealed class Trigger
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? MacroTargets { get; set; }   // null => foreground alt
     public int CooldownMs { get; set; } = 2000;
+    // Ore stop (0.5.0), all additive: absent keys load as null / 0.
+    /// <summary>Set on the eight colour triggers of a ring.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public RingSpot? Ring { get; set; }
+    /// <summary>Criteria of a <see cref="TriggerMode.Layer"/> trigger.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public LayerCriteria? Layer { get; set; }
+    /// <summary>The match must hold unbroken this long before the trigger fires, and a fire
+    /// starts a fresh hold. 0 = fire on the no-match to match edge, as before.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public int HoldForMs { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastFiredAt { get; set; }
     public long HitCount { get; set; }
@@ -122,6 +133,7 @@ public sealed class Trigger
 public sealed class TriggersFile
 {
     public int SchemaVersion { get; set; } = 2;
+    public List<RingDefinition> Rings { get; set; } = new();
     public List<Trigger> Triggers { get; set; } = new();
 }
 

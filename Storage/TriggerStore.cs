@@ -26,6 +26,33 @@ public sealed class TriggerStore
         get { lock (_lock) return _state.Triggers.ToArray(); }
     }
 
+    public IReadOnlyList<RingDefinition> Rings
+    {
+        get { lock (_lock) return _state.Rings.ToArray(); }
+    }
+
+    /// <summary>Adds the trigger, or replaces the one with the same id.</summary>
+    public void Upsert(Trigger t)
+    {
+        lock (_lock)
+        {
+            var idx = _state.Triggers.FindIndex(x => x.Id == t.Id);
+            if (idx < 0) _state.Triggers.Add(t); else _state.Triggers[idx] = t;
+            WriteNow();
+        }
+    }
+
+    /// <summary>Adds the ring, or replaces the one with the same id (compared ignoring case).</summary>
+    public void UpsertRing(RingDefinition ring)
+    {
+        lock (_lock)
+        {
+            var idx = _state.Rings.FindIndex(x => string.Equals(x.Id, ring.Id, StringComparison.OrdinalIgnoreCase));
+            if (idx < 0) _state.Rings.Add(ring); else _state.Rings[idx] = ring;
+            WriteNow();
+        }
+    }
+
     public void Add(Trigger t)
     {
         lock (_lock) { _state.Triggers.Add(t); WriteNow(); }
@@ -84,6 +111,7 @@ public sealed class TriggerStore
             var json = File.ReadAllText(_path);
             _state = JsonSerializer.Deserialize<TriggersFile>(json, TriggerJsonOptions.Default)
                      ?? new TriggersFile();
+            _state.Rings ??= new();   // "rings": null in a hand-edited file
             if (MigrateToV2()) WriteNow(); // sticky
         }
         catch (JsonException)

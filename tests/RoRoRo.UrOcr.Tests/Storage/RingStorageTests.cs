@@ -1,0 +1,144 @@
+using System.IO;
+using RoRoRo.UrOcr.Storage;
+using Xunit;
+
+namespace RoRoRo.UrOcr.Tests.Storage;
+
+public class RingStorageTests
+{
+    private static string TempFile()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        return path;
+    }
+
+    private static RingDefinition Ring() => new("mine8", "Mine #8", new[]
+    {
+        new LayerDefinition("navy", new[] { new Rgb(30, 30, 90) }),
+        new LayerDefinition("grey", new[] { new Rgb(120, 120, 120), new Rgb(100, 100, 100) }),
+    }, MinLayerSpots: 3);
+
+    private static Trigger Spot(int order, Guid? id = null, string name = "spot") => new()
+    {
+        Id = id ?? Guid.NewGuid(),
+        Name = name,
+        Region = new RegionRect(0, 0, 9, 9),
+        Mode = TriggerMode.Color,
+        Color = new ColorCriteria(new Rgb(0, 0, 0), 30, ColorSamplingMode.SinglePixel,
+            Point: new PickPoint(4, 4), Box: new SampleBox(), NoneOf: new[] { new Rgb(135, 206, 235) }),
+        Keybind = new KeyCombo("F13", Array.Empty<string>()),
+        Ring = new RingSpot("mine8", order),
+    };
+
+    [Fact]
+    public void Rings_and_ring_spots_survive_a_reload()
+    {
+        var path = TempFile();
+        var s = new TriggerStore(path);
+        s.UpsertRing(Ring());
+        s.Add(Spot(2));
+
+        var s2 = new TriggerStore(path);
+
+        var ring = Assert.Single(s2.Rings);
+        Assert.Equal("mine8", ring.Id);
+        Assert.Equal(3, ring.MinLayerSpots);
+        Assert.Equal(2, ring.Layers.Count);
+        Assert.Equal(new[] { new Rgb(120, 120, 120), new Rgb(100, 100, 100) }, ring.Layers[1].Rock);
+        var t = Assert.Single(s2.All);
+        Assert.Equal(new RingSpot("mine8", 2), t.Ring);
+        Assert.Equal(new[] { new Rgb(135, 206, 235) }, t.Color!.NoneOf);
+    }
+
+    [Fact]
+    public void Layer_trigger_and_hold_survive_a_reload()
+    {
+        var path = TempFile();
+        var s = new TriggerStore(path);
+        s.Add(new Trigger
+        {
+            Id = Guid.NewGuid(), Name = "rock cap",
+            Region = new RegionRect(0, 0, 800, 599), Mode = TriggerMode.Layer,
+            Layer = new LayerCriteria("mine8", LayerCondition.SameLayer), HoldForMs = 300_000,
+            Keybind = new KeyCombo("F13", Array.Empty<string>()),
+        });
+
+        var t = Assert.Single(new TriggerStore(path).All);
+
+        Assert.Equal(TriggerMode.Layer, t.Mode);
+        Assert.Equal(new LayerCriteria("mine8", LayerCondition.SameLayer), t.Layer);
+        Assert.Equal(300_000, t.HoldForMs);
+        Assert.Null(t.Color);
+    }
+
+    [Fact]
+    public void A_file_without_rings_loads_with_none()
+    {
+        var path = TempFile();
+        File.WriteAllText(path, """
+        {
+          "schemaVersion": 2,
+          "triggers": [
+            { "id": "11111111-1111-1111-1111-111111111111", "name": "t",
+              "enabled": true, "region": { "x": 10, "y": 20, "width": 30, "height": 40 },
+              "mode": "color", "accountAware": true, "coordSpace": "screen",
+              "color": { "targetRgb": { "r": 1, "g": 2, "b": 3 }, "toleranceRgb": 10, "samplingMode": "singlePixel" },
+              "keybind": { "key": "F", "modifiers": [] } }
+          ]
+        }
+        """);
+
+        var s = new TriggerStore(path);
+
+        Assert.Empty(s.Rings);
+        var t = Assert.Single(s.All);
+        Assert.Null(t.Ring);
+        Assert.Null(t.Layer);
+        Assert.Equal(0, t.HoldForMs);
+        Assert.Null(t.Color!.NoneOf);
+    }
+
+    [Fact]
+    public void Zero_hold_and_no_ring_are_not_written()
+    {
+        var path = TempFile();
+        var s = new TriggerStore(path);
+        s.Add(new Trigger
+        {
+            Id = Guid.NewGuid(), Name = "plain",
+            Region = new RegionRect(0, 0, 10, 10), Mode = TriggerMode.Color,
+            Color = new ColorCriteria(new Rgb(0, 0, 0), 5, ColorSamplingMode.SinglePixel),
+            Keybind = new KeyCombo("A", Array.Empty<string>()),
+        });
+
+        var json = File.ReadAllText(path);
+
+        Assert.DoesNotContain("holdForMs", json);
+        Assert.DoesNotContain("\"ring\"", json);
+        Assert.DoesNotContain("\"layer\"", json);
+    }
+
+    [Fact]
+    public void UpsertRing_replaces_by_id_ignoring_case()
+    {
+        var s = new TriggerStore(TempFile());
+        s.UpsertRing(Ring());
+        s.UpsertRing(Ring() with { Id = "MINE8", Name = "renamed" });
+
+        var r = Assert.Single(s.Rings);
+        Assert.Equal("renamed", r.Name);
+    }
+
+    [Fact]
+    public void Upsert_adds_then_replaces_by_id()
+    {
+        var s = new TriggerStore(TempFile());
+        var id = Guid.NewGuid();
+        s.Upsert(Spot(0, id, "first"));
+        s.Upsert(Spot(0, id, "second"));
+
+        var t = Assert.Single(s.All);
+        Assert.Equal("second", t.Name);
+    }
+}
