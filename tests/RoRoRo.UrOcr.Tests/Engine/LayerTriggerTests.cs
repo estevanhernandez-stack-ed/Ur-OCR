@@ -188,4 +188,25 @@ public class LayerTriggerTests
         await Tick(rig);
         Assert.Equal(new[] { "camera-top-down" }, rig.Macros.Calls);
     }
+
+    [Fact]
+    public async Task Tabbing_away_gates_the_spots_but_not_an_ungated_camera_trigger()
+    {
+        // The ring spots are account-aware and get gated out while tabbed away, so the
+        // ring itself reads Unknown (not visible). The camera trigger here is NOT gated
+        // (accountAware: false), so it is still read and evaluated against that Unknown
+        // status every tick. This exercises TriggerCoordinator's "Unknown is not NoLayer"
+        // rule directly, unlike Tabbing_away_is_not_no_layer where the camera trigger is
+        // itself gated out and JudgeLayerTriggers never sees it.
+        var rig = Build(true, LayerTrigger("camera", LayerCondition.NoLayer, 10_000, "camera-top-down", false));
+        rig.Paint.Default = Orange;
+        rig.Fg.IsAlt = false;
+
+        await Tick(rig);
+        Advance(rig, 20_000);
+        await Tick(rig);
+
+        Assert.Empty(rig.Macros.Calls);
+        Assert.Equal(RingStatus.Unknown, rig.C.Rings.Get("mine8").Status);
+    }
 }
