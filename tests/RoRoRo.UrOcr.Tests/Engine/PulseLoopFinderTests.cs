@@ -97,7 +97,7 @@ public class PulseLoopFinderTests
 
         rig.Clock.Advance(1000);
         await Tick(rig);
-        Assert.Equal(2, rig.Reader.Reads);
+        Assert.Equal(2, rig.Reader.FramePids.Count);
         Assert.Equal(new[] { "id-on", "id-off", ScriptedMacros.ClearAtId, ScriptedMacros.ClearAtId }, rig.Macros.RunIds);
     }
 
@@ -245,9 +245,66 @@ public class PulseLoopFinderTests
         Assert.Equal(new[] { "id-on", "id-off", ScriptedMacros.ClearAtId }, rig.Macros.RunIds);
     }
 
-    /// <summary>A calm frame of dark blocks with bright 2 px seams every <paramref name="spacing"/> px.</summary>
+    /// <summary>A calm frame of grey blocks with bright 2 px seams every <paramref name="spacing"/> px.</summary>
     private static FramePixels Blocks(int spacing, int w = 800, int h = 599) =>
-        new(w, h, Frames.Grid(w, h, spacing, spacing, new Rgb(40, 45, 60), new Rgb(225, 230, 240)));
+        new(w, h, Frames.Grid(w, h, spacing, spacing, PulseFixtures.Grey, new Rgb(225, 230, 240)));
+
+    /// <summary>An 800x599 frame of one colour.</summary>
+    private static FramePixels Solid(Rgb c) => new(800, 599, Frames.Solid(800, 599, c));
+
+    [Fact]
+    public async Task The_layer_is_read_by_colour_share_on_the_calm_frame_not_the_spots()
+    {
+        var rig = Build();
+        rig.Reader.Next = ScriptedReader.All(PulseFixtures.Navy);     // the spots would say navy
+
+        await FirstRead(rig);
+
+        Assert.Equal(PulseState.Clearing, rig.Loop.State);
+        Assert.Equal("grey", rig.Loop.Layer);
+        Assert.Equal(0, rig.Reader.Reads);
+        Assert.Equal(new[] { 7 }, rig.Reader.FramePids);               // one calm frame: block size, layer, targets
+        Assert.Contains(rig.Log, l => l == "layer grey (100% of the area, next navy 0%) is the target: clearing at 13 points (0 ore, 13 stone)");
+    }
+
+    [Fact]
+    public async Task A_frame_with_no_layer_colours_rides_a_burst()
+    {
+        var rig = Build(frame: Solid(PulseFixtures.Sky));
+
+        await FirstRead(rig);
+
+        Assert.Equal(PulseState.Bursting, rig.Loop.State);
+        Assert.Empty(rig.Macros.ClearAts);
+        Assert.Contains(rig.Log, l => l == "no layer on a calm frame (best navy 0%): riding a burst");
+    }
+
+    [Fact]
+    public async Task A_frame_of_a_layer_above_the_target_rides_on()
+    {
+        var rig = Build(frame: Solid(PulseFixtures.Navy));
+
+        await FirstRead(rig);
+
+        Assert.Equal(PulseState.Riding, rig.Loop.State);
+        Assert.Empty(rig.Macros.ClearAts);
+        Assert.Contains(rig.Log, l => l == "layer navy (100% of the area, next black 0%) is above the target (grey): riding on");
+    }
+
+    [Fact]
+    public async Task The_ring_can_raise_the_minimum_share()
+    {
+        // Sky over the top half of the view: grey is well under 90% of the disc.
+        var frame = PulseFixtures.Calm((0, 0, 800, 330, PulseFixtures.Sky));
+        var strict = Build(PulseFixtures.RingWithFinder() with { LayerMinShare = 0.9 }, frame);
+        var plain = Build(frame: frame);
+
+        await FirstRead(strict);
+        await FirstRead(plain);
+
+        Assert.Equal(PulseState.Bursting, strict.Loop.State);
+        Assert.Equal(PulseState.Clearing, plain.Loop.State);
+    }
 
     [Fact]
     public async Task The_block_size_comes_from_the_frame_not_the_layer()

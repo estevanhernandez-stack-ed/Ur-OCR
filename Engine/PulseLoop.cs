@@ -8,7 +8,8 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 
 /// <summary>
 /// One account's ore stop pulse (spec 2026-09-28). Riding: Auto Mine on for BurstMs. Pausing: Auto
-/// Mine off, then SettleMs for the effects to clear. Reading: vote the layer on that calm frame.
+/// Mine off, then SettleMs for the effects to clear. Reading: read the layer on that calm frame, by
+/// colour share around the character with an ore finder (LayerShare), else by the 8-spot vote.
 /// Above the aim layer: ride again. Past it: Go to Top.
 /// At it: Clearing. With an ore finder for the aim layer, one ClearAt call carries the finder's points
 /// (ore patches, then a block grid) from a calm frame; without one, one Clear spot per ring spot,
@@ -38,6 +39,7 @@ public sealed class PulseLoop
     private IReadOnlyList<FinderTarget>? _targets;     // this pass's ClearAt points; null on a Clear spot pass
     private bool _clearAtEnded;                        // this pass's ClearAt has ended
     private bool _frameLogged;
+    private readonly int _toleranceRgb;               // the ring spots' rock tolerance, for the colour-share read
 
     private bool _macroDone;               // this state's macro has ended
     private DateTimeOffset? _until;        // this state's timer: set when its macro ends
@@ -59,6 +61,7 @@ public sealed class PulseLoop
         _ring = TriggerValidation.Find(rings, config.RingId);
         _spots = PulseValidation.SpotsOf(config.RingId, triggers);
         _finder = _ring is null ? null : PulseValidation.FinderFor(_ring, config.AimLayer);
+        _toleranceRgb = _spots.Select(s => s.Color?.ToleranceRgb ?? 0).DefaultIfEmpty(0).Max();
         _call = new MacroCall(macros, config.AccountUserId.ToString(CultureInfo.InvariantCulture), clock, log);
 
         if (PulseValidation.Validate(config, rings, triggers) is { } problem)
@@ -142,7 +145,56 @@ public sealed class PulseLoop
         }
     }
 
-    private bool Read(int pid, DateTimeOffset now)
+    private bool Read(int pid, DateTimeOffset now) =>
+        _finder is { } finder ? ReadByShare(pid, now, finder) : ReadBySpots(pid, now);
+
+    /// <summary>With an ore finder (spec "The layer is read by colour share, not 8 spots"): one calm
+    /// frame gives the block size, the layer and the ClearAt points.</summary>
+    private bool ReadByShare(int pid, DateTimeOffset now, FinderSetup finder)
+    {
+        var frame = _reader.ReadFrame(pid);
+        if (frame is null)
+        {
+            if (!_frameLogged) _log("could not capture the window for the ore finder (hidden or gone); waiting");
+            _frameLogged = true;
+            return false;
+        }
+        _frameLogged = false;
+
+        var ring = _ring!;
+        var pass = ForPass(frame, finder);
+        var (sx, sy) = Scale(frame, finder);
+        var read = LayerShare.Read(frame, (int)Math.Round(finder.CenterX * sx), (int)Math.Round(finder.CenterY * sy),
+            Math.Max(1, (int)Math.Round(pass.Pitch * (sx + sy) / 2)), ring.Layers, finder.Ore.Select(o => o.Rgb).ToList(),
+            _toleranceRgb, ring.LayerMinShare ?? LayerShare.DefaultMinShare, ring.LayerLead ?? LayerShare.DefaultLead);
+        var ranked = ring.Layers.Select(l => (l.Name, Share: read.Shares[l.Name])).OrderByDescending(x => x.Share).ToList();
+        if (read.Layer is not { } layer)
+        {
+            _log($"no layer on a calm frame (best {ranked[0].Name} {Percent(ranked[0].Share)}): riding a burst");
+            return Enter(PulseState.Bursting);
+        }
+
+        var next = ranked.FirstOrDefault(x => !string.Equals(x.Name, layer, StringComparison.OrdinalIgnoreCase));
+        var seen = next.Name is null
+            ? $"layer {layer} ({Percent(read.Shares[layer])} of the area)"
+            : $"layer {layer} ({Percent(read.Shares[layer])} of the area, next {next.Name} {Percent(next.Share)})";
+        if (Route(layer, seen, now) is { } moved) return moved;
+
+        var targets = TargetFinder.Find(frame, pass);
+        if (targets.Count == 0)
+        {
+            _log($"{seen} is the target, but the ore finder has no point inside the window: riding a burst");
+            return Enter(PulseState.Bursting);
+        }
+        _targets = targets;
+        _pass = pass;
+        var ore = targets.Count(t => t.Ore);
+        _log($"{seen} is the target: clearing at {targets.Count} points ({ore} ore, {targets.Count - ore} stone)");
+        return Enter(PulseState.Clearing);
+    }
+
+    /// <summary>Without an ore finder: the 8-spot vote, and one Clear spot per ring spot.</summary>
+    private bool ReadBySpots(int pid, DateTimeOffset now)
     {
         var samples = _reader.Read(pid, _spots);
         if (samples is null || samples.Count == 0)
@@ -163,6 +215,20 @@ public sealed class PulseLoop
             return Enter(PulseState.Bursting);
         }
 
+        var seen = $"layer {layer} ({votes[layer]} of {samples.Count} spots)";
+        if (Route(layer, seen, now) is { } moved) return moved;
+
+        _targets = null;
+        var order = PulseOrder.Rank(samples, ring.Layers[LayerNumber(layer) - 1].Rock);
+        foreach (var o in order) _queue.Enqueue(o);
+        _log($"{seen} is the target: clearing {string.Join(" ", order.Select(SpotName))}");
+        return Enter(PulseState.Clearing);
+    }
+
+    /// <summary>Notes the layer just read and leaves the target to clear (null, with the pass reset), or
+    /// moves on: past the target goes to top, above it rides, the rock cap goes to top.</summary>
+    private bool? Route(string layer, string seen, DateTimeOffset now)
+    {
         if (!string.Equals(layer, Layer, StringComparison.OrdinalIgnoreCase))
         {
             Layer = layer;
@@ -170,8 +236,7 @@ public sealed class PulseLoop
         }
         var number = LayerNumber(layer);
         var aim = _config.AimLayer;
-        var aimName = ring.Layers[aim - 1].Name;
-        var seen = $"layer {layer} ({votes[layer]} of {samples.Count} spots)";
+        var aimName = _ring!.Layers[aim - 1].Name;
 
         if (number > aim)
         {
@@ -196,37 +261,15 @@ public sealed class PulseLoop
         _cleared.Clear();
         _skipped.Clear();
         _clearAtEnded = false;
-
-        if (_finder is { } finder)
-        {
-            var frame = _reader.ReadFrame(pid);
-            if (frame is null)
-            {
-                if (!_frameLogged) _log("could not capture the window for the ore finder (hidden or gone); waiting");
-                _frameLogged = true;
-                return false;
-            }
-            _frameLogged = false;
-            var pass = ForPass(frame, finder);
-            var targets = TargetFinder.Find(frame, pass);
-            if (targets.Count == 0)
-            {
-                _log($"{seen} is the target, but the ore finder has no point inside the window: riding a burst");
-                return Enter(PulseState.Bursting);
-            }
-            _targets = targets;
-            _pass = pass;
-            var ore = targets.Count(t => t.Ore);
-            _log($"{seen} is the target: clearing at {targets.Count} points ({ore} ore, {targets.Count - ore} stone)");
-            return Enter(PulseState.Clearing);
-        }
-
-        _targets = null;
-        var order = PulseOrder.Rank(samples, ring.Layers[number - 1].Rock);
-        foreach (var o in order) _queue.Enqueue(o);
-        _log($"{seen} is the target: clearing {string.Join(" ", order.Select(SpotName))}");
-        return Enter(PulseState.Clearing);
+        return null;
     }
+
+    private static string Percent(double share) =>
+        (share * 100).ToString("0", CultureInfo.InvariantCulture) + "%";
+
+    /// <summary>The live frame's scale against the finder's measured client.</summary>
+    private static (double X, double Y) Scale(FramePixels frame, FinderSetup f) =>
+        ((double)frame.Width / f.ClientW, (double)frame.Height / f.ClientH);
 
     /// <summary>The finder for this pass (spec "Block size is read every pass"): the camera pulls in to
     /// the first wall, so the block size is read off the calm frame and sets the grid, the reach and
@@ -235,8 +278,7 @@ public sealed class PulseLoop
     /// scaled into it and the block scaled back to measured pixels.</summary>
     private FinderSetup ForPass(FramePixels frame, FinderSetup f)
     {
-        var sx = (double)frame.Width / f.ClientW;
-        var sy = (double)frame.Height / f.ClientH;
+        var (sx, sy) = Scale(frame, f);
         var read = PitchEstimator.Estimate(frame, (int)Math.Round(f.CenterX * sx), (int)Math.Round(f.CenterY * sy));
         var pitch = read is null
             ? f.Pitch
