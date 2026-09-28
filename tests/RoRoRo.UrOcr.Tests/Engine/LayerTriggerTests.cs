@@ -101,21 +101,23 @@ public class LayerTriggerTests
     private static Task Tick(Rig rig) => rig.C.TickOnceAsync(CancellationToken.None);
     private static void Advance(Rig rig, int ms) => rig.Clock.Now = rig.Clock.Now.AddMilliseconds(ms);
 
-    [Fact]
-    public async Task Same_layer_for_the_hold_runs_the_rock_cap()
+    [Theory]
+    [InlineData(300_000, "5 minutes")]
+    [InlineData(60_000, "1 minute")]
+    public async Task Same_layer_for_the_hold_runs_the_rock_cap(int holdForMs, string expectedDuration)
     {
-        var rig = Build(false, LayerTrigger("rock cap", LayerCondition.SameLayer, 300_000, "go-to-top", false));
+        var rig = Build(false, LayerTrigger("rock cap", LayerCondition.SameLayer, holdForMs, "go-to-top", false));
 
         await Tick(rig);
-        Advance(rig, 299_999);
+        Advance(rig, holdForMs - 1);
         await Tick(rig);
         Assert.Empty(rig.Macros.Calls);
 
         Advance(rig, 1);
         await Tick(rig);
         Assert.Equal(new[] { "go-to-top" }, rig.Macros.Calls);
-        // Spec decision 7 (amended): the reason goes to ur-ocr.log.
-        Assert.Contains("trigger \"rock cap\": macro go-to-top (Went to top: 5 minutes on the navy layer)", rig.Diag);
+        // Spec decision 7 (amended): the reason goes to ur-ocr.log. "1 minute" is singular, not "1 minutes".
+        Assert.Contains($"trigger \"rock cap\": macro go-to-top (Went to top: {expectedDuration} on the navy layer)", rig.Diag);
     }
 
     [Fact]

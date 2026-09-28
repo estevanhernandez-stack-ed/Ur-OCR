@@ -442,7 +442,11 @@ public sealed class TriggerCoordinator(
         // Spec decision 7 (amended): Ur OCR says why it sends the account up; Ur Task only
         // logs the Go to Top playback's ending, since RunMacro carries no reason.
         if (trig.Layer is { Condition: LayerCondition.SameLayer })
-            detail = $"Went to top: {RockCapMinutes(trig.HoldForMs)} minutes on the {r.HoldKey} layer";
+        {
+            var minutes = RockCapMinutes(trig.HoldForMs);
+            var unit = minutes == "1" ? "minute" : "minutes";
+            detail = $"Went to top: {minutes} {unit} on the {r.HoldKey} layer";
+        }
 
         var outcome = await FireAsync(trig, detail, now, ct);
         if (outcome == FireOutcome.Busy)
