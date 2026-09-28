@@ -32,6 +32,30 @@ The ring is measured, not drawn entirely by hand. `tools/ring-sweep.ps1` capture
 
 The result is in `ring-import.log` next to `triggers.json`. Only the foreground account is watched, as with every account-aware trigger.
 
+## Ore stop pulse
+
+Watching the ring while Auto Mine rides misses ore: effects and popups sit over the spots, and plain rock comes in colours that look like ore. The pulse stops to look instead. Per account, it rides Auto Mine for a short burst, turns it off, waits a second, and reads the layer from the ring on the still frame. At your target layer it asks Ur Task to clear each ring spot, ore first. Ur Task only holds the mouse on a block the game outlines in white (one the pickaxe can reach and break), and skips the rest. When nothing is left to clear, it rides another burst.
+
+Set it up per account in a pulse file (one entry per account; your Roblox user id is on your profile URL):
+
+    {
+      "schema": 1,
+      "pulses": [
+        { "accountUserId": 123456789, "ringId": "mine8", "targetLayer": 3, "mode": "top" },
+        { "accountUserId": 987654321, "ringId": "mine8", "targetLayer": 2, "mode": "oneAbove",
+          "burstMs": 2000, "settleMs": 1000, "rockCapMinutes": 5 }
+      ]
+    }
+
+`targetLayer` counts the ring's layers from the top. `top` clears on that layer; `oneAbove` clears on the layer above it, for an account whose pickaxe struggles there. Left out, `burstMs` is 2000, `settleMs` 1000 and `rockCapMinutes` 5. Import the ring first, then the pulse, with Ur OCR closed and Ur Task's ore stop macros installed:
+
+    RoRoRo.UrOcr.exe --import-ring mine8.measured.json
+    RoRoRo.UrOcr.exe --import-pulse pulse.json
+
+The result is in `pulse-import.log`. An account with a pulse no longer uses the ring triggers above; every other account still does. The pulse only acts while its account's window is in front, and never switches windows for you.
+
+If Ur Task restarts (or a playback runs past 10 minutes) mid-macro, the pulse stops rather than guess whether it pressed anything; restart Ur OCR to start it again. Pause all (F9) and dry run hold the pulse too — in dry run, a pulse-owned ring shows nothing, since its ring triggers stand down and the pulse itself does not act.
+
 ## Capabilities
 
 | Capability | What it means |
