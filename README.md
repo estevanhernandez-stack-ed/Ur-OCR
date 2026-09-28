@@ -67,13 +67,15 @@ The block size is read from the screen on every pass. The camera stays zoomed ou
 The finder goes in the measured file, one entry per layer you clear on, in pixels of the file's `recordedClientW` x `recordedClientH` (the values below show the shape; measure your own):
 
     "finders": [
-      { "layer": "bottom", "pitch": 50, "centerX": 390, "centerY": 340, "radiusBlocks": 5,
+      { "layer": "bottom", "pitch": 50, "centerX": 400, "centerY": 310, "radiusBlocks": 5,
         "outline": { "w": 50, "h": 50, "minCount": 60, "whiteMin": 225 },
         "ore": [ { "name": "cyan crystal", "rgb": { "r": 60, "g": 220, "b": 230 } } ],
         "oreToleranceRgb": 40 }
     ]
 
 `layer` names one of the file's `layers`. `pitch` is one block in pixels at that layer, used only when the screen shows no clear block pattern, `centerX` and `centerY` the middle of your character, `radiusBlocks` 5 when left out. `outline` is Ur Task's outline check: at most 240 pixels a side, `whiteMin` 1 to 255, `minCount` no more than the box's pixels. A patch within `oreToleranceRgb` of an `ore` colour is ore; `"ore": []` clears the grid alone. `ring-fit.ps1 -Write` keeps `finders` when it rewrites `layers`. Import the ring again after adding one; `ring-import.log` names each finder, or says there is none.
+
+With a finder, the pulse also tells the layers apart on that calm frame. Layers can share a colour (the top and bottom of Mine #8 both have a near-black base), so a single spot can't. Instead the pulse looks at the area around your character, three blocks out, with the game's buttons left out, and counts how much of it is in colours only one layer has. The layer with the most wins when it covers at least 4% of the area and at least 1.5 times the next layer. Otherwise it rides another burst. The log gives the shares, for example `layer black (38% of the area, next blue 6%)`. So each layer's `rock` list should hold only the colours that layer alone has, and leave out any colour two layers share. Ore colours never count for a layer. To change the two thresholds, set `layerMinShare` (0.04) or `layerLead` (1.5) at the top of the measured file and import the ring again.
 
 A measured file without `finders`, or an account whose clearing layer has none, clears with the eight "Clear spot" macros as before. The ore finder needs Ur Task 0.11.0 or later; an older one makes the pulse stop with `Unknown method 'ClearAt'`.
 
