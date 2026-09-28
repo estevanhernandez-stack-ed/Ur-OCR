@@ -24,9 +24,9 @@ Trigger regions can anchor to an alt's window instead of a fixed screen spot. Wh
 
 ## Ore stop (ring triggers)
 
-Built for PS99's Mining League. Eight colour triggers form a ring around your character in a top-down camera view and share one reading of which mine layer you are on. A spot runs its "Mine spot" macro in Ur Task when its colour is none of that layer's rock, so every ore gets stopped for. Two layer triggers ride along: after 5 minutes on one layer the account goes back to the top, and when no layer reads for 10 seconds the camera is set top-down again.
+Built for PS99's Mining League. Eight colour triggers form a ring around your character in a top-down camera view and share one reading of which mine layer you are on. A spot runs its "Mine spot" macro in Ur Task when its colour is none of that layer's rock, so every ore gets stopped for. The floor for how many spots must agree on a layer is `minLayerSpots`, set per measured file (3 by default). Two layer triggers ride along: after 5 minutes on one layer the account goes back to the top, and when no layer reads for 10 seconds the camera is set top-down again.
 
-The ring is measured, not drawn by hand. The capture sweep in `tools/` writes a measured-values file (`docs/reference/ore-stop/`), and Ur OCR imports it while closed:
+The ring is measured, not drawn entirely by hand. `tools/ring-sweep.ps1` captures frames and `tools/ring-fit.ps1 -Write` samples them to fill in `layers`, `ignore` and `toleranceRgb` in a measured-values file (`docs/reference/ore-stop/`); the spots, client size and macros in that file are measured and written by hand. Ur OCR then imports the finished file while closed:
 
     RoRoRo.UrOcr.exe --import-ring mine8.measured.json
 
