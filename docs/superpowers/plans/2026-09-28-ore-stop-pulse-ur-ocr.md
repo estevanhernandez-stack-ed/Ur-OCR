@@ -3923,6 +3923,19 @@ $sweep = (Get-Content (Join-Path $env:LOCALAPPDATA "626Labs\ore-stop-sweep\curre
 
 Pass: layer 1 is the top layer Este named first, and there are as many layers as Mine #8 has rock types (3 expected). If the order is wrong, reorder the `labels.csv` rows so the top layer's frames come first and fit again.
 
+- [ ] **Step 4b (controller ruling, Ur Task merge gate F4): the outline while held, and the reach measurement**
+
+This gates Ur Task 0.11.0's merge. With Auto Mine off, stand the main next to a breakable block. Run one `Clear spot <name>` on that spot through Ur MCP `run_macro`, then read `ur-task.log`:
+- **Pass:** "outline seen (N near-white px, needs M)" followed by "held N s, released: colour moved", and the block is visibly broken. The outline stays drawn while the button is held.
+- **Fail:** "released: outline gone" within about 0.2 s of the press while the block is still there. The game hides the outline during the hold. Then the Ur Task fallback applies before merge: disable the outline-gone release during a hold, and keep the pre-press check.
+
+Then measure the reach threshold:
+1. Take the near-white counts from the "outline seen / no outline" log lines, with the pointer on a breakable block and on plain rock or out of reach.
+2. Set `ring.reach.minCount` (and w/h if needed) in `..ororo-ur-task\docseference\events\macros\space-mine-ore-stop\measured.json`, halfway between the two, and set `ring.reach.measuredOn`.
+3. Run its `generate.ps1` and its `OreStopExampleMacrosTests`, commit there, and copy the regenerated macros into `%LOCALAPPDATA%ƖLabs\RoRoRoUrTask\macros`. Restart Ur Task.
+
+Record pass or fail for (a) and the chosen threshold in Step 11.
+
 - [ ] **Step 5: Commit the measured ring**
 
 ```powershell
