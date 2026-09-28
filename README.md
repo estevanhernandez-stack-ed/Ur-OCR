@@ -60,7 +60,7 @@ If Ur Task restarts mid-macro (a running playback is never dropped, and Ur Task 
 
 ### Ore finder
 
-The eight ring spots touch about 8 of the 70 blocks in view. With an ore finder measured for the layer an account clears on, the pulse looks at the calm frame around your character instead: every patch in an ore colour within reach (the grid's radius plus one block) becomes a target, nearest first, then a grid of points one block apart out to 5 blocks around your character, nearest first, 64 points at most. It sends them to Ur Task as one ClearAt call. Ur Task sizes the window to the measured client, hovers each point, checks the white outline, and clears what your pickaxe can reach. A pass that cleared anything reads again; a pass where every point was skipped rides another burst.
+The eight ring spots touch about 8 of the 70 blocks in view. With an ore finder measured for the layer an account clears on, the pulse looks at the calm frame around your character instead: every patch in an ore colour within reach (the grid's radius plus one block) becomes a target, nearest first, then a grid of points one block apart out to `radiusBlocks` blocks (5 by default) around your character, nearest first, 64 points at most. It sends them to Ur Task as one ClearAt call. Ur Task sizes the window to the measured client, hovers each point, checks the white outline, and clears what your pickaxe can reach. A pass that cleared anything reads again; a pass where every point was skipped rides another burst.
 
 The finder goes in the measured file, one entry per layer you clear on, in pixels of the file's `recordedClientW` x `recordedClientH` (the values below show the shape; measure your own):
 
@@ -73,7 +73,7 @@ The finder goes in the measured file, one entry per layer you clear on, in pixel
 
 `layer` names one of the file's `layers`. `pitch` is one block in pixels at that layer, `centerX` and `centerY` the middle of your character, `radiusBlocks` 5 when left out. `outline` is Ur Task's outline check: at most 120 pixels a side, `whiteMin` 1 to 255, `minCount` no more than the box's pixels. A patch within `oreToleranceRgb` of an `ore` colour is ore; `"ore": []` clears the grid alone. `ring-fit.ps1 -Write` keeps `finders` when it rewrites `layers`. Import the ring again after adding one; `ring-import.log` names each finder, or says there is none.
 
-A measured file without `finders`, or an account whose clearing layer has none, clears with the eight "Clear spot" macros as before. The ore finder needs an Ur Task with the ClearAt call; an older one makes the pulse stop with `Unknown method 'ClearAt'`.
+A measured file without `finders`, or an account whose clearing layer has none, clears with the eight "Clear spot" macros as before. The ore finder needs Ur Task 0.11.0 or later; an older one makes the pulse stop with `Unknown method 'ClearAt'`.
 
 ## Capabilities
 
