@@ -22,6 +22,8 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 public sealed class PulseLoop
 {
     public const int MaxStepsPerTick = 12;
+    /// <summary>The smallest outline box sent: the smallest block PitchEstimator reads.</summary>
+    public const int MinOutlineSide = 16;
 
     private readonly PulseConfig _config;
     private readonly RingDefinition? _ring;
@@ -31,6 +33,8 @@ public sealed class PulseLoop
     private readonly Action<string> _log;
     private readonly MacroCall _call;
     private readonly FinderSetup? _finder;            // the aim layer's ore finder; null clears the 8 spots
+    private FinderSetup? _pass;                        // this pass's finder: the block size read off the frame
+    private string? _blockLogged;                      // the last block size line, logged only when it changes
     private IReadOnlyList<FinderTarget>? _targets;     // this pass's ClearAt points; null on a Clear spot pass
     private bool _clearAtEnded;                        // this pass's ClearAt has ended
     private bool _frameLogged;
@@ -203,13 +207,15 @@ public sealed class PulseLoop
                 return false;
             }
             _frameLogged = false;
-            var targets = TargetFinder.Find(frame, finder);
+            var pass = ForPass(frame, finder);
+            var targets = TargetFinder.Find(frame, pass);
             if (targets.Count == 0)
             {
                 _log($"{seen} is the target, but the ore finder has no point inside the window: riding a burst");
                 return Enter(PulseState.Bursting);
             }
             _targets = targets;
+            _pass = pass;
             var ore = targets.Count(t => t.Ore);
             _log($"{seen} is the target: clearing at {targets.Count} points ({ore} ore, {targets.Count - ore} stone)");
             return Enter(PulseState.Clearing);
@@ -222,12 +228,36 @@ public sealed class PulseLoop
         return Enter(PulseState.Clearing);
     }
 
+    /// <summary>The finder for this pass (spec "Block size is read every pass"): the camera pulls in to
+    /// the first wall, so the block size is read off the calm frame and sets the grid, the reach and
+    /// the outline box (w = h = the block, 16 to 240). A frame with no clear pattern falls back to the
+    /// layer's measured pitch. The frame may be another size than the measured client: the centre is
+    /// scaled into it and the block scaled back to measured pixels.</summary>
+    private FinderSetup ForPass(FramePixels frame, FinderSetup f)
+    {
+        var sx = (double)frame.Width / f.ClientW;
+        var sy = (double)frame.Height / f.ClientH;
+        var read = PitchEstimator.Estimate(frame, (int)Math.Round(f.CenterX * sx), (int)Math.Round(f.CenterY * sy));
+        var pitch = read is null
+            ? f.Pitch
+            : Math.Max(FinderSetup.MinPitch, (int)Math.Round(read.Pitch * 2 / (sx + sy), MidpointRounding.AwayFromZero));
+        var side = Math.Clamp(pitch, MinOutlineSide, FinderSetup.MaxOutlineSide);
+        var minCount = Math.Min(f.Outline.MinCount, side * side);
+
+        var line = $"block size {pitch} px ({(read is null ? "layer default; no clear pattern" : "read from the frame")})";
+        if (minCount < f.Outline.MinCount) line += $"; outline minCount {minCount} to fit the {side}x{side} box";
+        if (line != _blockLogged) _log(line);
+        _blockLogged = line;
+
+        return f with { Pitch = pitch, Outline = f.Outline with { W = side, H = side, MinCount = minCount } };
+    }
+
     private bool ClearNext()
     {
         if (_targets is { } targets)
         {
             if (_clearAtEnded) return EndPass();
-            var f = _finder!;
+            var f = _pass!;
             _call.BeginClearAt(new ClearAtClient(f.ClientW, f.ClientH),
                 targets.Select(t => new ClearAtPoint(t.X, t.Y, t.Label)).ToList(),
                 new ClearAtOutline(f.Outline.W, f.Outline.H, f.Outline.MinCount, f.Outline.WhiteMin));

@@ -244,4 +244,83 @@ public class PulseLoopFinderTests
         await Ticks(rig, 3);
         Assert.Equal(new[] { "id-on", "id-off", ScriptedMacros.ClearAtId }, rig.Macros.RunIds);
     }
+
+    /// <summary>A calm frame of dark blocks with bright 2 px seams every <paramref name="spacing"/> px.</summary>
+    private static FramePixels Blocks(int spacing, int w = 800, int h = 599) =>
+        new(w, h, Frames.Grid(w, h, spacing, spacing, new Rgb(40, 45, 60), new Rgb(225, 230, 240)));
+
+    [Fact]
+    public async Task The_block_size_comes_from_the_frame_not_the_layer()
+    {
+        var rig = Build(frame: Blocks(32));                 // the layer says 50
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(32, 32, 60, 225), req.Outline);
+        Assert.Equal(13, req.Points.Count);
+        Assert.Equal(new ClearAtPoint(390, 340, "stone 1"), req.Points[0]);
+        Assert.Contains(req.Points, p => (p.X, p.Y) == (422, 340));
+        Assert.Contains(req.Points, p => (p.X, p.Y) == (390, 276));
+        Assert.Contains(rig.Log, l => l == "block size 32 px (read from the frame)");
+    }
+
+    [Fact]
+    public async Task A_frame_with_no_clear_pattern_uses_the_layer_block_size()
+    {
+        var rig = Build();                                   // plain grey rock
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(50, 50, 60, 225), req.Outline);
+        Assert.Contains(req.Points, p => (p.X, p.Y) == (440, 340));
+        Assert.Contains(rig.Log, l => l == "block size 50 px (layer default; no clear pattern)");
+    }
+
+    [Fact]
+    public async Task A_frame_at_another_size_gives_the_block_size_in_measured_pixels()
+    {
+        var rig = Build(frame: Blocks(40, 1000, 749));      // 125%: 40 live px is 32 measured
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(32, 32, 60, 225), req.Outline);
+        Assert.Contains(req.Points, p => (p.X, p.Y) == (422, 340));
+    }
+
+    [Fact]
+    public async Task The_block_size_is_logged_only_when_it_changes()
+    {
+        var rig = Build(frame: Blocks(32));
+        await FirstRead(rig);
+        await Tick(rig);                  // finished: settle
+        rig.Clock.Advance(1000);
+        await Tick(rig);                  // second read, same frame
+        Assert.Equal(2, rig.Macros.ClearAts.Count);
+        Assert.Single(rig.Log, l => l.StartsWith("block size"));
+
+        rig.Reader.Frame = PulseFixtures.Calm();
+        await Tick(rig);                  // finished: settle
+        rig.Clock.Advance(1000);
+        await Tick(rig);                  // third read: no pattern
+
+        Assert.Equal(3, rig.Macros.ClearAts.Count);
+        Assert.Equal(new[] { "block size 32 px (read from the frame)", "block size 50 px (layer default; no clear pattern)" },
+            rig.Log.Where(l => l.StartsWith("block size")));
+    }
+
+    [Fact]
+    public async Task A_small_block_keeps_minCount_inside_its_box()
+    {
+        var finder = PulseFixtures.Finder() with { Outline = new OutlineBox(50, 50, MinCount: 400) };
+        var rig = Build(PulseFixtures.Ring() with { Finders = new[] { finder } }, Blocks(18));
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(18, 18, 324, 225), req.Outline);
+        Assert.Contains(rig.Log, l => l == "block size 18 px (read from the frame); outline minCount 324 to fit the 18x18 box");
+    }
 }
