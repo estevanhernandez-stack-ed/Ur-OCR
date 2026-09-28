@@ -89,4 +89,20 @@ public class SpotReaderTests
         Assert.Equal(new[] { 1 }, readings.Select(r => r.Order));
         Assert.Single(paint.Regions);
     }
+
+    [Fact]
+    public void ReadFrame_captures_the_whole_client_area()
+    {
+        var paint = new PaintedCapture();
+
+        var frame = new SpotReader(paint, new Metrics()).ReadFrame(7)!;
+
+        Assert.Equal(new RegionRect(0, 0, 800, 599), Assert.Single(paint.Regions));
+        Assert.Equal((800, 599), (frame.Width, frame.Height));
+        Assert.Equal(Grey, frame.At(400, 300));
+    }
+
+    [Fact]
+    public void ReadFrame_of_a_window_it_cannot_find_is_null() =>
+        Assert.Null(new SpotReader(new PaintedCapture(), new Metrics { Gone = true }).ReadFrame(7));
 }

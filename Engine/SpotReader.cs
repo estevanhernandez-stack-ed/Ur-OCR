@@ -11,6 +11,11 @@ public interface ISpotReader
     /// <summary>Samples each ring spot in <paramref name="pid"/>'s window. Null when the window
     /// cannot be resolved (hidden, closed, mid-resize).</summary>
     IReadOnlyList<SpotReading>? Read(int pid, IReadOnlyList<Trigger> spots);
+
+    /// <summary>The whole client area of <paramref name="pid"/>'s window, for the ore finder. Null
+    /// when it cannot be captured. The default is null so a reader without frames (the runner
+    /// tests' fakes) still compiles; SpotReader captures one.</summary>
+    FramePixels? ReadFrame(int pid) => null;
 }
 
 /// <summary>
@@ -32,5 +37,16 @@ public sealed class SpotReader(ICaptureSource capture, IWindowMetrics metrics) :
                 colour.ToleranceRgb, colour.NoneOf ?? Array.Empty<Rgb>()));
         }
         return result;
+    }
+
+    public FramePixels? ReadFrame(int pid)
+    {
+        if (pid == 0) return null;
+        var hwnd = metrics.HwndForPid(pid);
+        if (hwnd == IntPtr.Zero) return null;
+        if (metrics.ClientOrigin(hwnd) is not { } origin || metrics.ClientSize(hwnd) is not { } size
+            || size.W < 1 || size.H < 1) return null;
+        using var bmp = capture.Capture(new RegionRect(origin.X, origin.Y, size.W, size.H));
+        return FramePixels.FromBitmap(bmp);
     }
 }
