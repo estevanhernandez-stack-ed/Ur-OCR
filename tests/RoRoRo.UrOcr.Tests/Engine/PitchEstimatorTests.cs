@@ -140,14 +140,14 @@ public class PitchEstimatorTests
     }
 
     /// <summary>Real calm frames, cropped to the 800x599 client, nameplates covered. The character sits
-    /// near (400, 340). A wrong size fails; no size (null) falls back to the layer's pitch safely.</summary>
+    /// near (400, 310). A wrong size fails; no size (null) falls back to the layer's pitch safely.</summary>
     [Theory]
     [InlineData("pit", 28, 36)]
     [InlineData("bottom-grid", 44, 56)]
     [InlineData("surface", 18, 25)]
     public void A_real_frame_reads_its_block_size(string name, int min, int max)
     {
-        var e = PitchEstimator.Estimate(Real(name), 400, 340);
+        var e = PitchEstimator.Estimate(Real(name), 400, 310);
 
         Assert.NotNull(e);
         Assert.InRange(e!.Pitch, min, max);
@@ -156,7 +156,7 @@ public class PitchEstimatorTests
     [Fact]
     public void A_one_block_shaft_reads_its_block_or_nothing()
     {
-        var e = PitchEstimator.Estimate(Real("shaft"), 400, 340);
+        var e = PitchEstimator.Estimate(Real("shaft"), 400, 310);
 
         if (e is not null) Assert.InRange(e.Pitch, 150, 190);
     }

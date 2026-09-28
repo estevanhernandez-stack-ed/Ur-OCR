@@ -41,8 +41,18 @@ public static class PitchEstimator
     public const int DetrendWindow = 200;
     /// <summary>A lag counts only when the profile holds this many repeats of it.</summary>
     public const int MinRepeats = 3;
+    /// <summary>The disc around the character left out of a read (the default minPitch): the
+    /// character, not the blocks.</summary>
+    public const int CharacterRadius = 16;
 
-    public static PitchEstimate? Estimate(FramePixels frame, int centerX, int centerY, int minPitch = 16, int maxPitch = 240)
+    /// <summary>The HUD in this frame, scaled from the measured client: a read stays right of Left,
+    /// below Top and above Bottom.</summary>
+    public static (int Left, int Top, int Bottom) HudBounds(FramePixels frame) =>
+        (HudLeft * frame.Width / HudClientW,
+         HudTop * frame.Height / HudClientH,
+         Math.Min(frame.Height - 1, HudBottom * frame.Height / HudClientH));
+
+    public static PitchEstimate? Estimate(FramePixels frame, int centerX, int centerY, int minPitch = CharacterRadius, int maxPitch = 240)
     {
         var a = EstimateAxes(frame, centerX, centerY, minPitch, maxPitch);
         var x = a.AlongX is { } lx && a.ConfidenceX >= MinConfidence ? lx : (int?)null;
@@ -60,12 +70,10 @@ public static class PitchEstimator
     }
 
     /// <summary>Each axis on its own, before the confidence floor and the agreement rule.</summary>
-    public static PitchAxes EstimateAxes(FramePixels frame, int centerX, int centerY, int minPitch = 16, int maxPitch = 240)
+    public static PitchAxes EstimateAxes(FramePixels frame, int centerX, int centerY, int minPitch = CharacterRadius, int maxPitch = 240)
     {
         // The HUD, scaled from the measured client into this frame.
-        var left = HudLeft * frame.Width / HudClientW;
-        var top = HudTop * frame.Height / HudClientH;
-        var bottom = Math.Min(frame.Height - 1, HudBottom * frame.Height / HudClientH);
+        var (left, top, bottom) = HudBounds(frame);
         var right = frame.Width - 1;
         if (centerX <= left || centerX >= right || centerY <= top || centerY >= bottom) return new PitchAxes(null, 0, null, 0);
 
