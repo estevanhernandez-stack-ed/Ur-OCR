@@ -57,8 +57,13 @@ public sealed class TriggerCoordinator(
 
     public int TickRateHz { get; set; } = 5;
     public TimeSpan WatchdogTimeout { get; set; } = TimeSpan.FromSeconds(5);
-    public bool Paused { get; set; }
-    public bool DryRun { get; set; }
+
+    // Set from the UI thread, read from the coordinator's own loop thread (PluginRuntime.cs); a
+    // volatile backing field makes that correct by construction rather than correct in practice.
+    private volatile bool _paused;
+    private volatile bool _dryRun;
+    public bool Paused { get => _paused; set => _paused = value; }
+    public bool DryRun { get => _dryRun; set => _dryRun = value; }
 
     /// <summary>The current layer of every ring, updated each tick.</summary>
     public RingTracker Rings { get; } = new();
