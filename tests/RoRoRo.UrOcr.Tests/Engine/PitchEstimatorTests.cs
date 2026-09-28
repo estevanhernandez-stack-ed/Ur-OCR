@@ -38,7 +38,6 @@ public class PitchEstimatorTests
     [InlineData(32)]
     [InlineData(50)]
     [InlineData(100)]
-    [InlineData(170)]
     public void A_block_grid_gives_its_spacing(int spacing)
     {
         var e = PitchEstimator.Estimate(Grid(spacing, spacing), Cx, Cy);
@@ -53,13 +52,29 @@ public class PitchEstimatorTests
     [InlineData(32)]
     [InlineData(50)]
     [InlineData(100)]
-    [InlineData(170)]
     public void Noise_does_not_move_the_spacing(int spacing)
     {
         var e = PitchEstimator.Estimate(Grid(spacing, spacing, Noise), Cx, Cy);
 
         Assert.NotNull(e);
         Assert.InRange(e!.Pitch, spacing - 2, spacing + 2);
+    }
+
+    [Fact]
+    public void A_block_that_does_not_repeat_three_times_in_view_is_not_read()
+    {
+        // Between the top bar and the hotbar the region here is 341 px: a 170 px block shows twice at most.
+        Assert.Null(PitchEstimator.Estimate(Grid(170, 170), Cx, Cy));
+    }
+
+    [Fact]
+    public void The_hotbar_is_not_read_as_blocks()
+    {
+        // Flat rock above, a row of 78 px slots in the hotbar band below y 470.
+        var px = Frames.Solid(W, H, Dark);
+        for (var x = 170; x < W; x += 78) Frames.Fill(px, W, x, 480, 60, 60, Line);
+
+        Assert.Null(PitchEstimator.Estimate(new FramePixels(W, H, px), Cx, Cy));
     }
 
     [Fact]
@@ -116,5 +131,33 @@ public class PitchEstimatorTests
         var frame = Grid(50, 50, Noise);
 
         Assert.Equal(PitchEstimator.Estimate(frame, Cx, Cy), PitchEstimator.Estimate(frame, Cx, Cy));
+    }
+
+    private static FramePixels Real(string name)
+    {
+        using var bmp = new System.Drawing.Bitmap(System.IO.Path.Combine(AppContext.BaseDirectory, "fixtures", "pitch", name + ".png"));
+        return FramePixels.FromBitmap(bmp);
+    }
+
+    /// <summary>Real calm frames, cropped to the 800x599 client, nameplates covered. The character sits
+    /// near (400, 340). A wrong size fails; no size (null) falls back to the layer's pitch safely.</summary>
+    [Theory]
+    [InlineData("pit", 28, 36)]
+    [InlineData("bottom-grid", 44, 56)]
+    [InlineData("surface", 18, 25)]
+    public void A_real_frame_reads_its_block_size(string name, int min, int max)
+    {
+        var e = PitchEstimator.Estimate(Real(name), 400, 340);
+
+        Assert.NotNull(e);
+        Assert.InRange(e!.Pitch, min, max);
+    }
+
+    [Fact]
+    public void A_one_block_shaft_reads_its_block_or_nothing()
+    {
+        var e = PitchEstimator.Estimate(Real("shaft"), 400, 340);
+
+        if (e is not null) Assert.InRange(e.Pitch, 150, 190);
     }
 }
