@@ -1,0 +1,158 @@
+using RoRoRo.UrOcr.Ipc;
+
+namespace RoRoRo.UrOcr.Engine;
+
+public enum CallStatus
+{
+    /// <summary>Not started yet (account behind, busy retry pending) or still running.</summary>
+    Waiting,
+    /// <summary>Finished normally. For a Clear spot: it held and let go, so a block was cleared.</summary>
+    Done,
+    /// <summary>Finished having pressed nothing (reason "skipped": no outline).</summary>
+    Skipped,
+    /// <summary>A colour check failed and the playback stopped (reason "check-failed").</summary>
+    CheckFailed,
+    /// <summary>Ur Task no longer knows the playback (restarted, or kept past 10 minutes).</summary>
+    Lost,
+    /// <summary>The loop must stop; Detail says why.</summary>
+    Stop,
+}
+
+public sealed record CallResult(CallStatus Status, string Label, string? Detail = null);
+
+/// <summary>
+/// Runs one Ur Task macro for one account and follows it to its end, one tick at a time.
+/// Starting needs the account in front, read again right before RunMacro when the caller gives
+/// <c>inFront</c> (Ur Task focuses the target on every run); polling does not. busy, ack-timeout and
+/// no-targets-resolved retry every <see cref="RetryMs"/>. A playback that ends aborted or refused
+/// after the account was seen behind was a focus change and runs again (at most
+/// <see cref="MaxInterruptions"/> times in a row); aborted while the account stayed in front is
+/// taken as Esc and stops. Every other refusal stops, with the reason in Detail.
+/// </summary>
+public sealed class MacroCall(IMacroRunClient client, string target, IClock clock, Action<string> log)
+{
+    public const int RetryMs = 1000;
+    public const int MaxInterruptions = 5;
+    /// <summary>Ur Task's focus-to-play wait: none, the account is already in front.</summary>
+    public const int InterAltDelayMs = 0;
+
+    private string? _macroId;
+    private string _label = "";
+    private string? _playbackId;
+    private DateTimeOffset _retryAt = DateTimeOffset.MinValue;
+    private string? _loggedRefusal;
+    private int _interruptions;
+    private bool _sawBehind;
+
+    public bool Active => _macroId is not null;
+    public string Label => _label;
+
+    public void Begin(string macroId, string label)
+    {
+        _macroId = macroId;
+        _label = label;
+        _playbackId = null;
+        _retryAt = DateTimeOffset.MinValue;
+        _loggedRefusal = null;
+        _interruptions = 0;
+        _sawBehind = false;
+    }
+
+    /// <param name="inFront">A fresh read of "is this account in front", called right before
+    /// RunMacro. The foreground flag is read once per tick; this closes most of the gap.</param>
+    public async Task<CallResult> StepAsync(bool foreground, CancellationToken ct, Func<bool>? inFront = null)
+    {
+        if (_macroId is null) throw new InvalidOperationException("No macro to step: call Begin first.");
+        return _playbackId is null
+            ? await StartAsync(foreground, inFront, ct).ConfigureAwait(false)
+            : await PollAsync(foreground, ct).ConfigureAwait(false);
+    }
+
+    private async Task<CallResult> StartAsync(bool foreground, Func<bool>? inFront, CancellationToken ct)
+    {
+        var now = clock.Now;
+        if (!foreground || now < _retryAt) return Waiting;
+        // Ur Task focuses the target on every run: never ask while someone else is in front.
+        if (inFront is not null && !inFront()) return Waiting;
+
+        var resp = await client.RunAsync(_macroId!, new[] { target }, InterAltDelayMs, ct).ConfigureAwait(false);
+        if (resp.Ok && !string.IsNullOrEmpty(resp.PlaybackId))
+        {
+            _playbackId = resp.PlaybackId;
+            _loggedRefusal = null;
+            _sawBehind = false;
+            return Waiting;
+        }
+        switch (resp.Reason)
+        {
+            case BridgeReasons.Busy:
+            case BridgeReasons.AckTimeout:
+            case BridgeReasons.NoTargets:
+                _retryAt = now.AddMilliseconds(RetryMs);
+                if (_loggedRefusal != resp.Reason)
+                {
+                    log($"'{_label}': Ur Task said {resp.Reason}, trying again every {RetryMs / 1000} s");
+                    _loggedRefusal = resp.Reason;
+                }
+                return Waiting;
+            case BridgeReasons.NotRunning:
+                return End(CallStatus.Stop, $"Ur Task is not running, so '{_label}' could not start.");
+            default:
+                return End(CallStatus.Stop, resp.Ok
+                    ? $"Ur Task accepted '{_label}' but gave no playback id."
+                    : $"Ur Task refused '{_label}': {resp.Reason}. {resp.Detail}".TrimEnd());
+        }
+    }
+
+    private async Task<CallResult> PollAsync(bool foreground, CancellationToken ct)
+    {
+        if (!foreground) _sawBehind = true;
+        var r = await client.GetPlaybackAsync(_playbackId!, ct).ConfigureAwait(false);
+        if (!r.Ok)
+        {
+            return r.Reason switch
+            {
+                BridgeReasons.AckTimeout => Waiting,
+                BridgeReasons.UnknownPlayback => End(CallStatus.Lost,
+                    $"Ur Task no longer knows playback {_playbackId} of '{_label}' (restarted, or kept past 10 minutes)."),
+                BridgeReasons.NotRunning => End(CallStatus.Stop, $"Ur Task stopped answering while '{_label}' ran."),
+                _ => End(CallStatus.Stop, $"Ur Task would not say how '{_label}' went: {r.Reason}. {r.Detail}".TrimEnd()),
+            };
+        }
+
+        switch (r.State)
+        {
+            case PlaybackStates.Running:
+                return Waiting;
+            case PlaybackStates.Finished:
+                return string.Equals(r.Reason, BridgeReasons.Skipped, StringComparison.OrdinalIgnoreCase)
+                    ? End(CallStatus.Skipped, r.Detail)
+                    : End(CallStatus.Done, r.Detail);
+            case PlaybackStates.Stopped:
+                return End(CallStatus.Stop, $"'{_label}' was stopped in Ur Task (Esc or StopMacro), so the pulse loop stops too.");
+            case PlaybackStates.Failed when r.Reason == BridgeReasons.CheckFailed:
+                return End(CallStatus.CheckFailed, r.Detail);
+            case PlaybackStates.Failed when r.Reason == BridgeReasons.Aborted && !_sawBehind:
+                return End(CallStatus.Stop,
+                    $"'{_label}' ended while the account was in front ({r.Detail}); taken as Esc, so the pulse loop stops.");
+            case PlaybackStates.Failed when r.Reason is BridgeReasons.Aborted or BridgeReasons.Refused:
+                if (++_interruptions > MaxInterruptions)
+                    return End(CallStatus.Stop, $"'{_label}' was interrupted {MaxInterruptions} times in a row: {r.Detail}");
+                log($"'{_label}' was interrupted ({r.Detail}); it runs again when the account is in front");
+                _playbackId = null;
+                return Waiting;
+            default:
+                return End(CallStatus.Stop, $"'{_label}' failed in Ur Task: {r.Reason}. {r.Detail}".TrimEnd());
+        }
+    }
+
+    private CallResult Waiting => new(CallStatus.Waiting, _label);
+
+    private CallResult End(CallStatus status, string? detail)
+    {
+        var label = _label;
+        _macroId = null;
+        _playbackId = null;
+        return new CallResult(status, label, detail);
+    }
+}
