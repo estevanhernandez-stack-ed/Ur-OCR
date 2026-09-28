@@ -160,6 +160,8 @@ public class RingImporterTests
         { "empty rock", Measured() with { Layers = new[] { new MeasuredLayer("navy", Array.Empty<Rgb>()) } } },
         { "schema 2", Measured() with { Schema = 2 } },
         { "no hold", Measured() with { RockCap = new MeasuredAction(0, "Go to Top") } },
+        { "duplicate macro", Measured() with { Spots = Measured().Spots
+            .Select(s => s.Order == 1 ? s with { Macro = Measured().Spots[0].Macro } : s).ToList() } },
     };
 
     [Theory]

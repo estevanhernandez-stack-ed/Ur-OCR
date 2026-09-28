@@ -52,6 +52,14 @@ public sealed record MeasuredRing(
                 return $"Spot {s.Name} ({s.X}, {s.Y}) is outside the {RecordedClientW}x{RecordedClientH} game area.";
             if (string.IsNullOrWhiteSpace(s.Macro)) return $"Spot {s.Name} names no macro.";
         }
+        var dup = Spots
+            .GroupBy(s => s.Macro, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(g => g.Count() > 1);
+        if (dup is not null)
+        {
+            var names = string.Join(" and ", dup.Select(s => s.Name));
+            return $"Spots {names} both name macro \"{dup.Key}\": every spot needs its own macro.";
+        }
         if (Ignore is null) return "ignore is missing (use [] for none).";
         if (Ignore.Any(c => c is null || !ColorCriteria.InRange(c))) return "An ignore colour has a channel outside 0 to 255.";
         if (Layers is null || Layers.Count == 0) return "layers is empty: run ring-fit.ps1 -Write first.";
