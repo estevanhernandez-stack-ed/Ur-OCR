@@ -110,15 +110,26 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
         var r = await client.GetPlaybackAsync(_playbackId!, ct).ConfigureAwait(false);
         if (!r.Ok)
         {
+            if (r.Reason == BridgeReasons.AckTimeout)
+            {
+                // A stalled poll is otherwise silent: nothing in the log says the loop is stuck
+                // waiting on Ur Task. Log the first stall of a run, not every retry.
+                if (_loggedRefusal != BridgeReasons.AckTimeout)
+                {
+                    log($"'{_label}': Ur Task hasn't answered how it's going (ack-timeout); still polling.");
+                    _loggedRefusal = BridgeReasons.AckTimeout;
+                }
+                return Waiting;
+            }
             return r.Reason switch
             {
-                BridgeReasons.AckTimeout => Waiting,
                 BridgeReasons.UnknownPlayback => End(CallStatus.Lost,
                     $"Ur Task no longer knows playback {_playbackId} of '{_label}' (restarted, or kept past 10 minutes)."),
                 BridgeReasons.NotRunning => End(CallStatus.Stop, $"Ur Task stopped answering while '{_label}' ran."),
                 _ => End(CallStatus.Stop, $"Ur Task would not say how '{_label}' went: {r.Reason}. {r.Detail}".TrimEnd()),
             };
         }
+        _loggedRefusal = null;   // a good answer clears the stall so a later one logs again
 
         switch (r.State)
         {
@@ -137,9 +148,12 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
                     $"'{_label}' ended while the account was in front ({r.Detail}); taken as Esc, so the pulse loop stops.");
             case PlaybackStates.Failed when r.Reason is BridgeReasons.Aborted or BridgeReasons.Refused:
                 if (++_interruptions > MaxInterruptions)
-                    return End(CallStatus.Stop, $"'{_label}' was interrupted {MaxInterruptions} times in a row: {r.Detail}");
+                    return End(CallStatus.Stop, $"'{_label}' was interrupted {MaxInterruptions + 1} times in a row: {r.Detail}");
                 log($"'{_label}' was interrupted ({r.Detail}); it runs again when the account is in front");
                 _playbackId = null;
+                // Paced like a busy refusal: an in-front rerun that is refused again should not
+                // burn every remaining attempt in the same second.
+                _retryAt = clock.Now.AddMilliseconds(RetryMs);
                 return Waiting;
             default:
                 return End(CallStatus.Stop, $"'{_label}' failed in Ur Task: {r.Reason}. {r.Detail}".TrimEnd());

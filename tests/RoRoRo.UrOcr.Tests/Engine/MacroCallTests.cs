@@ -205,6 +205,7 @@ public class MacroCallTests
         Assert.Equal(CallStatus.Waiting, (await Step(rig, front: false)).Status);
         Assert.Single(rig.Macros.Runs);
 
+        rig.Clock.Advance(MacroCall.RetryMs);   // the rerun is paced, same as a busy retry
         Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);
         Assert.Equal(2, rig.Macros.Runs.Count);
         Assert.Equal(CallStatus.Done, (await Step(rig)).Status);
@@ -234,13 +235,33 @@ public class MacroCallTests
         CallResult end = new(CallStatus.Waiting, "");
         for (var i = 0; i <= MacroCall.MaxInterruptions; i++)
         {
+            if (i > 0) rig.Clock.Advance(MacroCall.RetryMs);   // each rerun is paced; let it come due
             await Step(rig);
             end = await Step(rig);
         }
 
         Assert.Equal(CallStatus.Stop, end.Status);
-        Assert.Contains("interrupted 5 times", end.Detail);
+        // MaxInterruptions (5) reruns plus the original run is 6 attempts in a row.
+        Assert.Contains($"interrupted {MacroCall.MaxInterruptions + 1} times", end.Detail);
         Assert.Equal(MacroCall.MaxInterruptions + 1, rig.Macros.Runs.Count);
+    }
+
+    [Fact]
+    public async Task An_interruption_rerun_is_paced_like_a_busy_retry()
+    {
+        var rig = Build();
+        rig.Macros.Script("id-on", ScriptedMacros.RefusedFocus, ScriptedMacros.Finished);
+        await Step(rig);
+
+        Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);   // refused: logged, not yet due
+        Assert.Single(rig.Macros.Runs);                               // does not rerun on the very next tick
+
+        Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);   // still not due
+        Assert.Single(rig.Macros.Runs);
+
+        rig.Clock.Advance(MacroCall.RetryMs);
+        Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);   // due now: reruns
+        Assert.Equal(2, rig.Macros.Runs.Count);
     }
 
     [Fact]
@@ -276,5 +297,36 @@ public class MacroCallTests
         Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);
         Assert.Equal(CallStatus.Done, (await Step(rig)).Status);
         Assert.Single(rig.Macros.Runs);
+    }
+
+    [Fact]
+    public async Task A_poll_that_stalls_on_ack_timeout_logs_once()
+    {
+        var rig = Build();
+        var stall = new GetPlaybackResponse(false, null, "ack-timeout", "slow", null);
+        rig.Macros.Script("id-on", stall, stall, ScriptedMacros.Finished);
+        await Step(rig);
+
+        Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);   // first stall: logs
+        Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);   // still stalled: no second log line
+        Assert.Equal(CallStatus.Done, (await Step(rig)).Status);      // recovers
+
+        Assert.Single(rig.Log, l => l.Contains("ack-timeout"));
+    }
+
+    [Fact]
+    public async Task A_later_stall_after_a_good_answer_logs_again()
+    {
+        var rig = Build();
+        var stall = new GetPlaybackResponse(false, null, "ack-timeout", "slow", null);
+        rig.Macros.Script("id-on", stall, ScriptedMacros.Running, stall, ScriptedMacros.Finished);
+        await Step(rig);
+
+        await Step(rig);   // stalls: logs
+        await Step(rig);   // a good "running" answer clears the stall flag
+        await Step(rig);   // stalls again: logs again
+        await Step(rig);   // finishes
+
+        Assert.Equal(2, rig.Log.Count(l => l.Contains("ack-timeout")));
     }
 }

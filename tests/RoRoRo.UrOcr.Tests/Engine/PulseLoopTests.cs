@@ -188,6 +188,7 @@ public class PulseLoopTests
 
         Assert.Equal(PulseState.Stopped, rig.Loop.State);
         Assert.Contains("could not check", rig.Loop.StopReason);
+        Assert.Contains("Auto Mine is off", rig.Loop.StopReason);   // Clearing always follows Auto Mine off completing
         await Tick(rig);
         Assert.Equal(3, rig.Macros.Runs.Count);
     }
@@ -322,6 +323,36 @@ public class PulseLoopTests
 
         Assert.Equal(PulseState.Stopped, rig.Loop.State);
         Assert.Contains("popup or captcha", rig.Loop.StopReason);
+        // The off macro never completed: a stop here always catches it mid-flight (see the Stop()
+        // comment), so this groups with "may still be on", not with the states downstream of it.
+        Assert.Contains("Auto Mine may still be on", rig.Loop.StopReason);
+    }
+
+    [Fact]
+    public async Task A_failed_check_on_Auto_Mine_on_says_Auto_Mine_may_still_be_on()
+    {
+        var rig = Build();
+        rig.Macros.Script("id-on", ScriptedMacros.CheckFailed);
+
+        await Tick(rig);                  // Auto Mine on started
+        await Tick(rig);                  // its check could not run
+
+        Assert.Equal(PulseState.Stopped, rig.Loop.State);
+        Assert.Contains("Auto Mine may still be on", rig.Loop.StopReason);
+    }
+
+    [Fact]
+    public async Task A_failed_check_going_to_top_says_Auto_Mine_may_still_be_on()
+    {
+        var rig = Build(PulseFixtures.Config(target: 1), everywhere: PulseFixtures.Grey);
+        rig.Macros.Script("id-top", ScriptedMacros.CheckFailed);
+
+        await FirstRead(rig);             // grey is past the target (navy): Go to Top started
+        await Tick(rig);                  // its check could not run
+
+        Assert.Equal(PulseState.Stopped, rig.Loop.State);
+        Assert.Equal("id-top", rig.Macros.RunIds.Last());
+        Assert.Contains("Auto Mine may still be on", rig.Loop.StopReason);
     }
 
     [Fact]
@@ -347,6 +378,7 @@ public class PulseLoopTests
 
         await FirstRead(rig);
         await Tick(rig, front: false);    // aborted while the account was behind
+        rig.Clock.Advance(MacroCall.RetryMs);   // the rerun is paced, same as a busy retry
         await Tick(rig);                  // in front again: N once more
 
         Assert.Equal(2, rig.Macros.RunIds.Count(id => id == "id-clear-N"));

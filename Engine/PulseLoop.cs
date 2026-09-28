@@ -280,9 +280,17 @@ public sealed class PulseLoop
 
     private void Stop(string reason)
     {
+        // Riding/Bursting run Auto Mine on; Pausing runs Auto Mine off, but a stop there always
+        // catches that macro mid-flight (_macroDone is only ever true entering Reading, which
+        // never stops), so it groups with "may still be on" too, same as a Go to Top in flight.
+        // Reading and Clearing always start after Auto Mine off has completed, so it is off.
+        var autoMine = State is PulseState.Reading or PulseState.Clearing
+            ? "Auto Mine is off."
+            : "Auto Mine may still be on.";
+        var full = $"{reason} {autoMine}";
         State = PulseState.Stopped;
-        StopReason = reason;
-        _log($"stopped: {reason}");
+        StopReason = full;
+        _log($"stopped: {full}");
     }
 
     private int LayerNumber(string name)
