@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-09-27
 
 ### Fixed
 
@@ -10,6 +10,13 @@
 
 - **Two-state colour rule.** A colour trigger can carry the colour of the opposite state (the grey of a locked tile, the red of "Off"); it matches only when it is within tolerance of the target and closer to the target than to that other colour. Stored and evaluated now; the editor has no control for it yet.
 - The activity log names the colour it saw and its distance on every colour check, e.g. `green #8BE03A d=4.1`, in the same words Ur Task uses.
+- **Ore stop: ring triggers.** Eight colour triggers can form a ring around your character and share one reading of which mine layer you are on: the layer whose rock the most spots match (at least three). A spot fires its macro when its colour is none of that layer's rock and none of its ignore colours, so every ore gets stopped for. With no layer, nothing fires. Built for PS99's Mining League.
+- **None-of colour checks.** A colour trigger can list colours and match when the sample is near none of them (`noneOf`), in place of one target colour.
+- **Hold before firing.** `holdForMs`: the match must hold that long, unbroken, before the trigger fires, and it fires again only after another full hold. The rock cap (same layer for 5 minutes, runs Go to Top) and the camera rule (no layer for 10 seconds, runs Camera top-down) are layer triggers built on it. Tabbing away from Roblox never counts as "no layer". When the rock cap fires, `ur-ocr.log` says why, e.g. `Went to top: 5 minutes on the grey layer`.
+- **Busy retry.** When Ur Task refuses a macro because a sequence is already running, the trigger stays armed and tries again after its cooldown while it still matches. A busy refusal no longer counts as a fire.
+- **Ring order.** When several ring spots match at once, the first in ring order (N, NE, E, SE, S, SW, W, NW) runs its macro; the rest wait their turn.
+- `RoRoRo.UrOcr.exe --import-ring <measured.json>` writes a measured ring into triggers.json without opening a window. Close Ur OCR first. The capture sweep that produces the file lives in `tools/`.
+- Ring layer changes, ring fires and busy retries are written to `ur-ocr.log`.
 
 ## 0.4.0 — 2026-07-03
 

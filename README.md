@@ -22,6 +22,16 @@ A 626 Labs product · *Imagine Something Else*.
 
 Trigger regions can anchor to an alt's window instead of a fixed screen spot. When a region is window-anchored, it follows whichever alt is in the foreground and scales with the window's size — moving or resizing the Roblox window no longer breaks detection. New triggers picked over an alt default to window-anchored; regions picked over a non-alt window stay screen-absolute, as do all pre-0.4 triggers (backward compatible, no re-pick needed).
 
+## Ore stop (ring triggers)
+
+Built for PS99's Mining League. Eight colour triggers form a ring around your character in a top-down camera view and share one reading of which mine layer you are on. A spot runs its "Mine spot" macro in Ur Task when its colour is none of that layer's rock, so every ore gets stopped for. Two layer triggers ride along: after 5 minutes on one layer the account goes back to the top, and when no layer reads for 10 seconds the camera is set top-down again.
+
+The ring is measured, not drawn by hand. The capture sweep in `tools/` writes a measured-values file (`docs/reference/ore-stop/`), and Ur OCR imports it while closed:
+
+    RoRoRo.UrOcr.exe --import-ring mine8.measured.json
+
+The result is in `ring-import.log` next to `triggers.json`. Only the foreground account is watched, as with every account-aware trigger.
+
 ## Capabilities
 
 | Capability | What it means |
@@ -36,6 +46,7 @@ Trigger regions can anchor to an alt's window instead of a fixed screen spot. Wh
 
 - **Exclusive fullscreen capture is unreliable** — windowed/borderless Roblox is fine. Switch your client out of exclusive fullscreen if triggers stop matching.
 - **OCR needs a language pack** — install one in Settings → Time & language → Language → OCR if Text triggers don't fire.
+- **Ring spots show no live preview.** A ring spot is judged against the mine layer the whole ring reads, which the trigger editor does not know, so its match meter stays blank. Watch the activity log or `ur-ocr.log` instead.
 - **Elevated foreground windows block fires** — if Task Manager (admin) or a UAC prompt has focus, account-aware triggers refuse to fire (we can't synthesize keys into elevated windows from a non-elevated process). Activity log will say `blocked: elevated`.
 
 ## Troubleshooting
