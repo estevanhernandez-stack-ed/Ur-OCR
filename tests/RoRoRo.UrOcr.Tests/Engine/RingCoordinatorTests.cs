@@ -266,6 +266,38 @@ public class RingCoordinatorTests
     }
 
     [Fact]
+    public async Task A_duplicate_ring_id_with_a_broken_copy_does_not_stop_other_triggers()
+    {
+        // Hand-edit only: UpsertRing dedupes, so this shape only comes from a hand-edited
+        // triggers.json. A second "mine8" with null layers must not throw and take every
+        // other trigger's tick down with it (Vote would dereference the null list).
+        var path = Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var file = new TriggersFile();
+        file.Rings.Add(Ring());
+        file.Rings.Add(new RingDefinition("mine8", "Mine #8 (broken copy)", null!, MinLayerSpots: 3));
+        foreach (var order in new[] { 7, 3, 0, 5, 1, 6, 2, 4 }) file.Triggers.Add(Spot(order, accountAware: false));
+        File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(file, TriggerJsonOptions.Default));
+
+        var store = new TriggerStore(path);
+        var paint = new PaintedCapture();
+        var macros = new RecordingMacros();
+        var log = new ActivityLog(capacity: 1000);
+        var clock = new FakeClock();
+        var fg = new Fg();
+        var diag = new List<string>();
+        var c = new TriggerCoordinator(store, paint, new ColorMatcher(), new NoText(), fg, new NotElevated(),
+            new NoKeys(), log, clock, new FakeMetrics(), macroClient: macros, diag: diag.Add);
+        paint.ByX[X(3)] = Orange;
+
+        await c.TickOnceAsync(CancellationToken.None);
+        await c.TickOnceAsync(CancellationToken.None);   // must not throw, and must not repeat every tick
+
+        Assert.Equal(new[] { "mine-3" }, macros.Calls);
+        Assert.Single(log.Snapshot(), e => e.Kind == ActivityKind.Error);
+    }
+
+    [Fact]
     public void An_empty_none_of_list_writes_none_not_infinity()
     {
         // Judge with an empty combined list reports Distance = +Infinity; logs and

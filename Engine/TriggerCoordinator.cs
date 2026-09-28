@@ -67,6 +67,8 @@ public sealed class TriggerCoordinator(
     private readonly Dictionary<Guid, DateTimeOffset> _retryAt = new();
     // Trigger id -> the problem last reported (invalid, or its read failed), so each problem is logged once.
     private readonly Dictionary<Guid, string> _lastProblem = new();
+    // Ring id -> the problem last reported, so a broken or duplicate ring logs once, not every tick.
+    private readonly Dictionary<string, string> _lastRingProblem = new(StringComparer.OrdinalIgnoreCase);
     // Trigger id -> what has been matching and since when, for HoldForMs.
     private readonly Dictionary<Guid, (string Key, DateTimeOffset Since)> _holding = new();
     private CancellationTokenSource? _cts;
@@ -172,7 +174,25 @@ public sealed class TriggerCoordinator(
         }
 
         var now = clock.Now;
-        foreach (var ring in rings) JudgeRing(ring, readings, now);
+        var seenRingIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ring in rings)
+        {
+            // A hand-edited file can carry the same ring id twice (UpsertRing dedupes,
+            // a text editor does not). Skip a duplicate or a ring that fails its own
+            // validation (e.g. null layers) rather than let it throw and take every
+            // other trigger's tick down with it.
+            if (!seenRingIds.Add(ring.Id))
+            {
+                ReportRingProblem(ring, $"Ring {ring.Id} is defined more than once; only the first definition is used.");
+                continue;
+            }
+            if (TriggerValidation.Validate(ring) is { } problem)
+            {
+                ReportRingProblem(ring, problem);
+                continue;
+            }
+            JudgeRing(ring, readings, now);
+        }
         JudgeLayerTriggers(readings);
 
         var claimedRings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -201,6 +221,15 @@ public sealed class TriggerCoordinator(
         _lastProblem[trig.Id] = problem;
         log.Record(trig.Id, trig.Name, ActivityKind.Error, problem);
         diag?.Invoke($"trigger \"{trig.Name}\" skipped: {problem}");
+    }
+
+    /// <summary>Logs a ring's problem once: again only after the message changes.</summary>
+    private void ReportRingProblem(RingDefinition ring, string problem)
+    {
+        if (_lastRingProblem.TryGetValue(ring.Id, out var last) && last == problem) return;
+        _lastRingProblem[ring.Id] = problem;
+        log.Record(Guid.Empty, $"(ring {ring.Name})", ActivityKind.Error, problem);
+        diag?.Invoke($"ring {ring.Name} skipped: {problem}");
     }
 
     private static bool IsGated(Trigger trig) => trig.AccountAware || trig.IsClientSpace;
