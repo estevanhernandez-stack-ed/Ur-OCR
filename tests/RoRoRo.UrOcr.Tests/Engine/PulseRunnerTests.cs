@@ -157,23 +157,39 @@ public class PulseRunnerTests
         Assert.Empty(rig.Macros.Runs);
     }
 
-    // Controller rulings: a hold never ticks a loop in front, and time held or behind does not
-    // count toward the rock cap (NoteBehind), the same as PulseLoopTests.Time_behind_...
+    // Controller rulings: a hold never acts, but a loop already in flight keeps being polled, and
+    // time held or behind does not count toward the rock cap (NoteBehind), the same as
+    // PulseLoopTests.Time_behind_...
 
     [Fact]
-    public async Task A_hold_never_ticks_a_loop_it_already_built()
+    public async Task A_hold_never_acts_but_keeps_polling_a_loop_it_already_built()
     {
         var rig = Build(PulseFixtures.Config(account: 42));
         await Tick(rig);                                  // Auto Mine on started as pb1
         Assert.Single(rig.Macros.Runs);
 
         rig.Runner.Hold = () => true;
-        await Tick(rig);
+        await Tick(rig);                                  // held: polls pb1 (unscripted: finishes)
+        await Tick(rig);                                  // held: nothing left in flight to poll
+
+        Assert.Single(rig.Macros.Runs);                   // never acts: no new macro started
+        Assert.Single(rig.Macros.Polls);                  // but the in-flight one was still followed
+        Assert.Equal(PulseState.Riding, rig.Runner.LoopFor(42)!.State);   // no Act: never left Riding
+    }
+
+    [Fact]
+    public async Task F9_is_re_checked_right_before_a_macro_starts()
+    {
+        var rig = Build(PulseFixtures.Config(account: 42));
+        var calls = 0;
+        // Hold's top-of-tick read (once) says "not held"; by the time the loop is about to
+        // start its macro, F9 has been pressed. Every call from there on says "held".
+        rig.Runner.Hold = () => calls++ > 0;
+
         await Tick(rig);
 
-        Assert.Single(rig.Macros.Runs);
-        Assert.Empty(rig.Macros.Polls);                   // not even followed: the loop was not ticked
-        Assert.Equal(PulseState.Riding, rig.Runner.LoopFor(42)!.State);
+        Assert.Empty(rig.Macros.Runs);                                  // F9 caught it before RunMacro
+        Assert.Equal(PulseState.Riding, rig.Runner.LoopFor(42)!.State);  // never got past Begin()
     }
 
     /// <summary>Through the runner: the first calm read on grey (the aim layer), a clear pass that

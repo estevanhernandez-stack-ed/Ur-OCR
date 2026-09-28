@@ -101,8 +101,27 @@ public sealed class PulseRunner(
     {
         if (Hold())
         {
-            // Paused or dry run: nothing acts, and the time does not count toward any rock cap.
-            foreach (var held in _loops.Values) held.NoteBehind();
+            // Paused or dry run: no loop acts, but TickAsync(false, ...) still polls a macro a
+            // loop already started (it cannot act with foreground: false, and calls NoteBehind
+            // itself), so an in-flight playback keeps being followed and the held time does not
+            // count toward any rock cap.
+            foreach (var loop in _loops.Values.ToList())
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    await loop.TickAsync(false, 0, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    // One loop's failure must not stop the others.
+                    Write(loop.AccountUserId, $"tick failed: {ex.Message}");
+                }
+            }
             return;
         }
         Sync();
@@ -116,7 +135,7 @@ public sealed class PulseRunner(
             {
                 // Ur Task focuses the target on every run, so the gate is read again right before one.
                 var account = loop.AccountUserId;
-                await loop.TickAsync(account == front, pid, ct, () => Front().Front == account);
+                await loop.TickAsync(account == front, pid, ct, () => !Hold() && Front().Front == account);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
