@@ -15,7 +15,7 @@
 - **Paths:** every path in this plan is relative to the Ur-OCR repo root; the sibling repo is `..\rororo-ur-task`. Run every command from the Ur-OCR root and check with `git rev-parse --show-toplevel` after any `cd`. No absolute user-profile path goes into any committed file, this plan included.
 - **Branch:** `feat/ore-stop-pulse`, created from `feat/ore-stop` at `05000ee` (Ur OCR 0.5.0, local, unpushed) in Task 1 Step 1. Never commit to `feat/ore-stop` or `main`.
 - **Build:** `dotnet build rororo-ur-ocr.csproj` from the repo root. There is no tracked `.sln`; do not create one.
-- **Tests:** `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj` (CI runs exactly this). The IntegrationTests project is not run. Baseline: **227 passed** (confirmed on `feat/ore-stop` at `05000ee`, 2026-09-28). Every task ends with the full suite green.
+- **Tests:** `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj` (CI runs exactly this). The IntegrationTests project is not run. Baseline: **227 passed** (confirmed on `feat/ore-stop` at `05000ee`, 2026-09-28). Every task ends with the full suite green. **Known flake (pre-existing, preflight F7):** a test that builds a temp `TriggerStore` can fail once in `TriggerStore.WriteNow` at `File.Move` (`System.IO.FileSystem.MoveFile` in the stack). Rerun the suite once before debugging; a second failure is real.
 - **No new NuGet packages.**
 - **Commits:** conventional commits (`feat(scope): ...`, `fix(...)`, `test(...)`, `docs(...)`, `chore(...)`), sentence case after the colon, no emoji. Every commit message ends with a blank line then `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - **Never `git add`** the untracked `AGENTS.md`, `CLAUDE.md` (GitNexus output) or `.gitnexus/`. Add files by path, never `git add -A` / `git add .`.
@@ -35,10 +35,11 @@
   | `Clear spot N` ... `Clear spot NW` | proposed `0e5a0000-0000-4000-8000-000000000021` ... `...28` (N, NE, E, SE, S, SW, W, NW) | **new.** Move to the spot, check the white outline; outlined: hold until it breaks or the outline goes; not outlined: press nothing. No Auto Mine toggles inside (the loop owns Auto Mine). |
 
   The 0.5.0 names `Mine spot N` ... `Mine spot NW` and `Camera top-down` stay, because `--import-ring` still resolves them for the old path.
-- **The skip signal (cross-repo requirement, the one the loop cannot work without):** a `Clear spot` playback that pressed nothing because there was no outline must end `state: "finished", reason: "skipped"`. `reason` on a finished playback is additive (the field exists; Ur Task sets it only on `failed` today). Ur OCR also counts `state: "failed", reason: "check-failed"` on a `Clear spot` as a skip, in case the Ur Task half reports a missing outline as a failed check. A skip reported as a plain `finished` with no reason would read as "cleared" and the loop would never ride on; Task 9 Step 2 checks this live before anything else.
+- **The skip signal (cross-repo requirement, the one the loop cannot work without):** a `Clear spot` playback that pressed nothing because there was no outline must end `state: "finished", reason: "skipped"`. `reason` on a finished playback is additive (the field exists; Ur Task sets it only on `failed` today). A `Clear spot` that ends `state: "failed", reason: "check-failed"` is **not** a skip: in Ur Task a hold's check fails only when it cannot run (the window cannot be seen, the check or reach box is outside the window), so the loop stops on it (preflight F1). A skip reported as a plain `finished` with no reason would read as "cleared" and the loop would never ride on; Task 9 Step 2 checks this live before anything else.
+- **Esc before a macro plays (Ur Task half, preflight F2):** Esc during Ur Task's focus step, before the macro's first input, used to end the pass with a `Skipped` alt, which read as `finished`. The Ur Task half now ends any pass with a `Skipped` alt as `state: "stopped"`, and `MacroCall` already reads `stopped` as a stop (`Stopped_in_Ur_Task_stops`), so Esc at any point stops the loop. Nothing to change here; Task 9 Step 10.1 presses Esc during a hold.
 - **Spec settings, per account, verbatim defaults:** target layer 1 to 3 (counting rock types down, so the ring's `layers` must be listed top first) and `top` or `oneAbove`; ride burst `burstMs` 2000; pause before reading `settleMs` 1000; rock cap `rockCapMinutes` 5.
 - **Rock cap log line (spec, and 0.5.0 wording):** `Went to top: N minutes on the <layer> layer` (`1 minute` for one), in `ur-ocr.log`.
-- **Account-aware:** a loop acts only while its own account is the foreground alt (same gate as triggers: a RoRoRo alt, not elevated). It never focuses a window. A playback it already started is still polled while the account is in the background (polling is a read, not an action).
+- **Account-aware:** a loop acts only while its own account is the foreground alt (same gate as triggers: a RoRoRo alt, not elevated). It never focuses a window, but every `RunMacro` makes Ur Task focus the target (`SequencePlayer`), so the foreground is read again immediately before each `RunMacro`, not reused from the start of the tick (preflight F5). A playback it already started is still polled while the account is in the background (polling is a read, not an action).
 - **Storage is additive:** `triggers.json` stays schema 2. New key `pulses` (always written, `[]` when empty). Legacy files load unchanged. 0.5.0 can load a 0.6.0 file (System.Text.Json skips the unknown key) but drops `pulses` the next time it saves.
 - **Output:** activity panel (kind `Pulse`, name `(pulse <userId>)`) and `%LOCALAPPDATA%\626Labs\rororo-ur-ocr\logs\ur-ocr.log`, every line prefixed `pulse <userId>: `. No notifications.
 - **Copy:** sentence case, second person where it addresses the user, no emoji, em-dashes minimal.
@@ -48,8 +49,8 @@
 ## Review Focus
 
 1. **Esc or StopMacro while a pulse macro runs, with the account in front:** the loop stops and logs why; it never runs the macro again on its own. Pinned by `Aborted_while_in_front_stops` (Task 4) and `A_playback_stopped_in_Ur_Task_stops_the_loop` (Task 5).
-2. **Tabbing to another window mid-cycle:** nothing starts while the account is behind, no window is focused, a started playback is still followed, and the ride timer keeps running so the loop pauses as soon as the account is back. Pinned by `Waits_while_the_account_is_not_in_front` (Task 5) and `Only_the_account_in_front_acts` (Task 6).
-3. **A popup or captcha over the Auto Mine dot** (`check-failed` on a toggle): the loop stops rather than keep pressing into it. Pinned by `A_failed_check_on_Auto_Mine_off_stops_the_loop` (Task 5).
+2. **Tabbing to another window mid-cycle:** nothing starts while the account is behind, no window is focused, a started playback is still followed, the ride timer keeps running so the loop pauses as soon as the account is back, time behind does not count toward the rock cap, and the foreground is checked again right before each macro starts. Pinned by `Waits_while_the_account_is_not_in_front` and `Time_behind_does_not_count_toward_the_rock_cap` (Task 5), `Does_not_start_when_the_account_left_the_front_during_the_tick` (Task 4), and `Only_the_account_in_front_acts` and `The_front_is_checked_again_right_before_a_macro_starts` (Task 6).
+3. **A popup or captcha over the Auto Mine dot** (`check-failed` on a toggle), **or a Clear spot whose check could not run** (`check-failed` on a clear): the loop stops rather than keep pressing into it or ride on blind. Pinned by `A_failed_check_on_Auto_Mine_off_stops_the_loop` and `A_failed_check_on_a_clear_stops_the_loop` (Task 5).
 4. **Ur Task restarted while a playback ran** (`unknown-playback`): the loop moves on instead of waiting forever. Pinned by `A_lost_playback_is_reported` (Task 4) and `A_lost_playback_moves_on` (Task 5).
 5. **Ur Task closed, or an Ur Task too old for `GetPlayback`:** the loop stops with one line naming the cause, instead of calling the pipe every tick. Pinned by `Missing_Ur_Task_stops` and `An_Ur_Task_without_GetPlayback_stops` (Task 4) and `Missing_Ur_Task_stops_with_a_log_line` (Task 5).
 
@@ -62,10 +63,10 @@ Also pinned, because both paths running on one ring would mean two macros fighti
 - **"Top" and "one above".** The aim layer is `targetLayer` (`top`) or `targetLayer - 1` (`oneAbove`). The loop clears on the first calm read that shows the aim layer, which is its top, since every ride is short. `oneAbove` needs `targetLayer >= 2`. A read below the aim goes to top; above it rides on.
 - **Ore first.** A spot is ore when its calm sample is more than its tolerance from every rock colour of the read layer and from every ignore colour of that spot. Ore spots go first, furthest from the rock set first; then the rest in ring order (N, NE, E, SE, S, SW, W, NW). Every spot is tried: Ur Task skips one with no outline.
 - **After a pass.** Cleared anything: settle `settleMs` and read again without riding (Auto Mine is still off, so no toggle is sent). Cleared nothing: Bursting (Auto Mine on for `burstMs`), then pause and read.
-- **Rock cap = no progress.** Progress is a cleared block or a new layer read. At each read, `rockCapMinutes` since the last progress on the same layer sends the account to the top. It applies on every layer, as the 0.5.0 rock cap did (an account that cannot dig past layer 1 is pushed back too). The Go to Top resets the clock.
+- **Rock cap = no progress while clearing.** Progress is a cleared block or a new layer read. At each read **on the aim layer**, `rockCapMinutes` since the last progress sends the account to the top (spec step 5: "if clearing makes no progress"). Upper layers never trip it: the pulsed descent is slow, and a Go to Top from an upper layer would only land the account on the same layer again (preflight F4). Time with the account behind, paused (F9) or in dry run does not count: the clock is moved forward by that time on the first tick back in front (preflight F3). The Go to Top resets the clock.
 - **No layer on a calm frame** (an effect or card over the ring, the camera knocked): log it and ride a burst. The pulse loop does not run `Camera top-down`; the camera is Este's digging view, set by hand (0.5.0 amendment).
-- **How playback endings are read** (`MacroCall`): `finished` is done (for a clear: cleared), `finished` + `skipped` is a skip, `check-failed` is a skip for a clear and a stop for a toggle or Go to Top (something is over the game). `aborted` or `refused`: if the loop saw the account leave the front while the playback ran, it was a focus change and the macro runs again when the account is back (at most 5 times in a row); if the account stayed in front, it is taken as Esc and the loop stops. `stopped` (StopMacro) stops the loop. `unknown-playback` moves on (a clear counts as a skip). `busy`, `ack-timeout` and `no-targets-resolved` on RunMacro retry every second. `ur-task-not-running` and every other refusal stop the loop with the reason.
-- **RunMacro targets the account's user id**, never `foreground`. The loop checks the foreground account right before calling; naming the account means that in the millisecond race where focus moves, Ur Task acts on the right account (and its guard stops the macro) instead of on whichever account just came to the front.
+- **How playback endings are read** (`MacroCall`): `finished` is done (for a clear: cleared), `finished` + `skipped` is a skip, `check-failed` stops the loop (on a toggle or Go to Top something is over the game; on a clear the check could not run, and a missing outline is `skipped`, never `check-failed`). `aborted` or `refused`: if the loop saw the account leave the front while the playback ran, it was a focus change and the macro runs again when the account is back (at most 5 times in a row); if the account stayed in front, it is taken as Esc and the loop stops. `stopped` (Esc or StopMacro, including Esc during Ur Task's focus step, per the Ur Task half's F2 fix) stops the loop. `unknown-playback` moves on (a clear counts as a skip). `busy`, `ack-timeout` and `no-targets-resolved` on RunMacro retry every second. `ur-task-not-running` and every other refusal stop the loop with the reason.
+- **RunMacro targets the account's user id**, never `foreground`, and asks for no inter-alt delay (`interAltDelayMs: 0`): the account is already in front, so Ur Task's default 500 ms focus wait is dead time on every one of about ten macros a pass (preflight F6). **Ur Task focuses the target on every run** (`SequencePlayer` calls `SetForegroundWindow` even for an explicit user id), so a stale "in front" would pull a window back after Este tabs away. The loop's `foreground` flag is read once at the start of the runner's tick; `MacroCall` therefore asks the runner again (`inFront`, a fresh read of the foreground gate) immediately before each `RunMacro`, and waits if the account is no longer in front (preflight F5). What remains is the gap between that read and Ur Task's focus call, a pipe round trip; Task 9 Step 9.3 watches for it.
 - **Pulse vs the 0.5.0 ring triggers: one owner per account and ring.** For an account with an enabled pulse on ring R, `TriggerCoordinator` skips every trigger of ring R (its eight spots, the rock cap, the camera rule) while that account is in front. Accounts without a pulse keep the 0.5.0 behaviour unchanged. The pulse loop reads the same eight spot triggers for their positions and sample boxes, whether or not they are enabled, so Este can also disable the old triggers outright without touching the pulse. Ownership holds while the pulse is enabled, even if its loop has stopped, so a stopped loop never silently hands the ring back to the old path.
 - **Macros are resolved at import**, like `--import-ring`, and stored in the pulse as ids, so the loop never reads Ur Task's macro folder at run time. Re-import after regenerating Ur Task macros.
 - **Pulses load once.** The runner builds a loop per enabled pulse on first tick; a changed pulse needs an Ur OCR restart, which the import already requires (it refuses while Ur OCR runs).
@@ -128,10 +129,11 @@ Also pinned, because both paths running on one ring would mean two macros fighti
 - Produces:
   - `public sealed record GetPlaybackRequest(string ContractVersion, string Method, string PlaybackId, string CallerPluginId);`
   - `public sealed record GetPlaybackResponse(bool Ok, string? State, string? Reason, string? Detail, int? StepIndex);`
-  - `BridgeContract.MethodGetPlayback = "GetPlayback"`, `BridgeContract.ForPlayback(string playbackId) -> GetPlaybackRequest`
+  - `BridgeContract.MethodGetPlayback = "GetPlayback"`, `BridgeContract.ForPlayback(string playbackId) -> GetPlaybackRequest`, `BridgeContract.ForMacro(string macroId, IReadOnlyList<string>? targets, int? interAltDelayMs = null)` (null is left off the wire, as before)
   - `public static class BridgeReasons` constants: `Busy "busy"`, `NotRunning "ur-task-not-running"`, `AckTimeout "ack-timeout"`, `NoTargets "no-targets-resolved"`, `UnknownPlayback "unknown-playback"`, `CheckFailed "check-failed"`, `Aborted "aborted"`, `Refused "refused"`, `Skipped "skipped"`
   - `public static class PlaybackStates` constants: `Running "running"`, `Finished "finished"`, `Stopped "stopped"`, `Failed "failed"`
   - `IMacroRunClient.GetPlaybackAsync(string playbackId, CancellationToken ct) -> Task<GetPlaybackResponse>` (default body returns `Ok=false, Reason="refused"`), implemented by `MacroRunClient`.
+  - `IMacroRunClient.RunAsync(string macroId, IReadOnlyList<string>? targets, int? interAltDelayMs, CancellationToken ct)` (default body forwards to the three-argument `RunAsync`, dropping the delay, so existing fakes compile), implemented by `MacroRunClient`.
 
 - [ ] **Step 1: Create the branch and commit this plan**
 
@@ -288,8 +290,22 @@ public class GetPlaybackClientTests
 
         Assert.Equal("RunMacro", req.RootElement.GetProperty("method").GetString());
         Assert.Equal("macro-1", req.RootElement.GetProperty("macroId").GetString());
+        Assert.False(req.RootElement.TryGetProperty("interAltDelayMs", out _));
         Assert.True(resp.Ok);
         Assert.Equal("pb-9", resp.PlaybackId);
+    }
+
+    [Fact]
+    public async Task RunAsync_can_ask_for_no_inter_alt_delay()
+    {
+        var (resp, req) = await RoundTrip(
+            c => ((IMacroRunClient)c).RunAsync("macro-1", new[] { "42" }, 0, default),
+            "{\"ok\":true,\"playbackId\":\"pb-9\",\"queued\":false}");
+
+        var root = req.RootElement;
+        Assert.Equal(0, root.GetProperty("interAltDelayMs").GetInt32());
+        Assert.Equal("42", root.GetProperty("targets")[0].GetString());
+        Assert.True(resp.Ok);
     }
 }
 ```
@@ -362,9 +378,11 @@ public static class BridgeContract
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public static RunMacroRequest ForMacro(string macroId, IReadOnlyList<string>? targets)
+    /// <summary>interAltDelayMs: Ur Task's wait between focusing a target and playing; null
+    /// leaves it to the macro (500 ms by default) and is left off the wire.</summary>
+    public static RunMacroRequest ForMacro(string macroId, IReadOnlyList<string>? targets, int? interAltDelayMs = null)
         => new(ContractVersion, Method, macroId,
-               targets is { Count: > 0 } ? targets : new[] { "foreground" }, null, CallerId);
+               targets is { Count: > 0 } ? targets : new[] { "foreground" }, interAltDelayMs, CallerId);
 
     public static GetPlaybackRequest ForPlayback(string playbackId)
         => new(ContractVersion, MethodGetPlayback, playbackId, CallerId);
@@ -380,6 +398,12 @@ namespace RoRoRo.UrOcr.Ipc;
 public interface IMacroRunClient
 {
     Task<RunMacroResponse> RunAsync(string macroId, IReadOnlyList<string>? targets, CancellationToken ct);
+
+    /// <summary>RunAsync with Ur Task's focus-to-play wait set (0 when the account is already in
+    /// front). The default drops the delay so a client that cannot send it (the trigger tests'
+    /// fakes) still compiles; MacroRunClient sends it.</summary>
+    Task<RunMacroResponse> RunAsync(string macroId, IReadOnlyList<string>? targets, int? interAltDelayMs, CancellationToken ct)
+        => RunAsync(macroId, targets, ct);
 
     /// <summary>How a playback RunAsync started is going. The default answers "refused" so a
     /// client that cannot ask (the trigger tests' fakes) still compiles; MacroRunClient asks Ur Task.</summary>
@@ -412,7 +436,10 @@ public sealed class MacroRunClient : IMacroRunClient
     internal MacroRunClient(Func<CancellationToken, Task<Stream?>> openPipe) => _openPipe = openPipe;
 
     public Task<RunMacroResponse> RunAsync(string macroId, IReadOnlyList<string>? targets, CancellationToken ct) =>
-        ExchangeAsync(BridgeContract.ForMacro(macroId, targets),
+        RunAsync(macroId, targets, null, ct);
+
+    public Task<RunMacroResponse> RunAsync(string macroId, IReadOnlyList<string>? targets, int? interAltDelayMs, CancellationToken ct) =>
+        ExchangeAsync(BridgeContract.ForMacro(macroId, targets, interAltDelayMs),
             (reason, detail) => new RunMacroResponse(false, null, false, reason, detail),
             // The wait was cancelled (e.g. the coordinator's per-tick watchdog) before Ur Task
             // acked. Ur Task acks as soon as it accepts or refuses a run (a running sequence is
@@ -487,16 +514,16 @@ public sealed class MacroRunClient : IMacroRunClient
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj --filter "FullyQualifiedName~GetPlaybackClientTests|FullyQualifiedName~MacroRunClientTests|FullyQualifiedName~BridgeContractTests"`
-Expected: PASS (8 new, 3 + 3 existing).
+Expected: PASS (9 new, 3 + 3 existing).
 
 Then the full suite: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj`
-Expected: **235 passed** (227 + 8). The five existing `IMacroRunClient` fakes compile unchanged because of the default method.
+Expected: **236 passed** (227 + 9). The five existing `IMacroRunClient` fakes compile unchanged because of the default methods.
 
 - [ ] **Step 7: Commit**
 
 ```powershell
 git add Ipc/BridgeContract.cs Ipc/IMacroRunClient.cs Ipc/MacroRunClient.cs tests/RoRoRo.UrOcr.Tests/Ipc/GetPlaybackClientTests.cs
-git commit -m "feat(ipc): ask Ur Task how a playback is going (GetPlayback)" -m "Same bridge contract 1.0 wire shape Ur Task already serves; unknown-playback and Ur OCR's own not-running and ack-timeout come back as refusals, never exceptions." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(ipc): ask Ur Task how a playback is going (GetPlayback)" -m "Same bridge contract 1.0 wire shape Ur Task already serves; unknown-playback and Ur OCR's own not-running and ack-timeout come back as refusals, never exceptions. RunMacro can now send interAltDelayMs." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -944,7 +971,7 @@ Run: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj --filter "F
 Expected: PASS (8 storage, 18 validation cases counting theory rows).
 
 Full suite: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj`
-Expected: **261 passed** (235 + 26).
+Expected: **262 passed** (236 + 26).
 
 - [ ] **Step 6: Commit**
 
@@ -1221,7 +1248,7 @@ Run: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj --filter "F
 Expected: PASS (3 + 5).
 
 Full suite: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj`
-Expected: **269 passed**.
+Expected: **270 passed**.
 
 - [ ] **Step 5: Commit**
 
@@ -1244,10 +1271,10 @@ git commit -m "feat(engine): read the ring at rest and rank the clears ore first
 - Produces:
   - `public enum CallStatus { Waiting, Done, Skipped, CheckFailed, Lost, Stop }`
   - `public sealed record CallResult(CallStatus Status, string Label, string? Detail = null);`
-  - `public sealed class MacroCall(IMacroRunClient client, string target, IClock clock, Action<string> log)` with `const int RetryMs = 1000`, `const int MaxInterruptions = 5`, `bool Active`, `string Label`, `void Begin(string macroId, string label)`, `Task<CallResult> StepAsync(bool foreground, CancellationToken ct)`
-  - Test helpers in `PulseFakes.cs` (namespace `RoRoRo.UrOcr.Tests.Engine`, internal): `PulseClock` (`Now`, `Advance(int ms)`), `ScriptedMacros : IMacroRunClient` (`Runs`, `RunIds`, `Polls`, `RunReplies`, `Script(macroId, params GetPlaybackResponse[])`, static `Finished`, `Running`, `Skipped`, `CheckFailed`, `Aborted`, `RefusedFocus`, `Stopped`, `Unknown`, `Gone`, `Refusal(reason)`).
+  - `public sealed class MacroCall(IMacroRunClient client, string target, IClock clock, Action<string> log)` with `const int RetryMs = 1000`, `const int MaxInterruptions = 5`, `const int InterAltDelayMs = 0`, `bool Active`, `string Label`, `void Begin(string macroId, string label)`, `Task<CallResult> StepAsync(bool foreground, CancellationToken ct, Func<bool>? inFront = null)`
+  - Test helpers in `PulseFakes.cs` (namespace `RoRoRo.UrOcr.Tests.Engine`, internal): `PulseClock` (`Now`, `Advance(int ms)`), `ScriptedMacros : IMacroRunClient` (`Runs` with `MacroId`, `Targets`, `Delay`; `RunIds`, `Polls`, `RunReplies`, `Script(macroId, params GetPlaybackResponse[])`, static `Finished`, `Running`, `Skipped`, `CheckFailed`, `Aborted`, `RefusedFocus`, `Stopped`, `Unknown`, `Gone`, `Refusal(reason)`).
 
-`StepAsync` contract: with no playback yet, it starts the macro (only when `foreground` and past any retry time) and returns `Waiting`; with a playback, it polls and returns `Waiting` while it runs, else the ending. Any status other than `Waiting` ends the call (`Active` becomes false).
+`StepAsync` contract: with no playback yet, it starts the macro (only when `foreground`, past any retry time, and `inFront()` still true when given, read right before `RunMacro`) with `interAltDelayMs: 0`, and returns `Waiting`; with a playback, it polls and returns `Waiting` while it runs, else the ending. Any status other than `Waiting` ends the call (`Active` becomes false).
 
 - [ ] **Step 1: Write the shared fakes**
 
@@ -1284,7 +1311,7 @@ internal sealed class ScriptedMacros : IMacroRunClient
 
     public static RunMacroResponse Refusal(string reason) => new(false, null, false, reason, $"{reason} detail");
 
-    public List<(string MacroId, IReadOnlyList<string>? Targets)> Runs { get; } = new();
+    public List<(string MacroId, IReadOnlyList<string>? Targets, int? Delay)> Runs { get; } = new();
     public List<string> RunIds => Runs.Select(r => r.MacroId).ToList();
     public List<string> Polls { get; } = new();
     public Queue<RunMacroResponse> RunReplies { get; } = new();
@@ -1296,9 +1323,12 @@ internal sealed class ScriptedMacros : IMacroRunClient
     public void Script(string macroId, params GetPlaybackResponse[] replies) =>
         _scripts[macroId] = new Queue<GetPlaybackResponse>(replies);
 
-    public Task<RunMacroResponse> RunAsync(string macroId, IReadOnlyList<string>? targets, CancellationToken ct)
+    public Task<RunMacroResponse> RunAsync(string macroId, IReadOnlyList<string>? targets, CancellationToken ct) =>
+        RunAsync(macroId, targets, null, ct);
+
+    public Task<RunMacroResponse> RunAsync(string macroId, IReadOnlyList<string>? targets, int? interAltDelayMs, CancellationToken ct)
     {
-        Runs.Add((macroId, targets));
+        Runs.Add((macroId, targets, interAltDelayMs));
         if (RunReplies.Count > 0) return Task.FromResult(RunReplies.Dequeue());
         var id = $"pb{++_next}";
         _macroOf[id] = macroId;
@@ -1352,6 +1382,7 @@ public class MacroCallTests
         var run = Assert.Single(rig.Macros.Runs);
         Assert.Equal("id-on", run.MacroId);
         Assert.Equal(new[] { "42" }, run.Targets);
+        Assert.Equal(0, run.Delay);
 
         var end = await Step(rig);
         Assert.Equal(CallStatus.Done, end.Status);
@@ -1367,6 +1398,19 @@ public class MacroCallTests
         Assert.Equal(CallStatus.Waiting, (await Step(rig, front: false)).Status);
         Assert.Empty(rig.Macros.Runs);
         Assert.True(rig.Call.Active);
+    }
+
+    [Fact]
+    public async Task Does_not_start_when_the_account_left_the_front_during_the_tick()
+    {
+        var rig = Build();
+
+        Assert.Equal(CallStatus.Waiting, (await rig.Call.StepAsync(true, CancellationToken.None, () => false)).Status);
+        Assert.Empty(rig.Macros.Runs);
+        Assert.True(rig.Call.Active);
+
+        Assert.Equal(CallStatus.Waiting, (await rig.Call.StepAsync(true, CancellationToken.None, () => true)).Status);
+        Assert.Single(rig.Macros.Runs);
     }
 
     [Fact]
@@ -1623,7 +1667,8 @@ public sealed record CallResult(CallStatus Status, string Label, string? Detail 
 
 /// <summary>
 /// Runs one Ur Task macro for one account and follows it to its end, one tick at a time.
-/// Starting needs the account in front; polling does not. busy, ack-timeout and
+/// Starting needs the account in front, read again right before RunMacro when the caller gives
+/// <c>inFront</c> (Ur Task focuses the target on every run); polling does not. busy, ack-timeout and
 /// no-targets-resolved retry every <see cref="RetryMs"/>. A playback that ends aborted or refused
 /// after the account was seen behind was a focus change and runs again (at most
 /// <see cref="MaxInterruptions"/> times in a row); aborted while the account stayed in front is
@@ -1633,6 +1678,8 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
 {
     public const int RetryMs = 1000;
     public const int MaxInterruptions = 5;
+    /// <summary>Ur Task's focus-to-play wait: none, the account is already in front.</summary>
+    public const int InterAltDelayMs = 0;
 
     private string? _macroId;
     private string _label = "";
@@ -1656,20 +1703,24 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
         _sawBehind = false;
     }
 
-    public async Task<CallResult> StepAsync(bool foreground, CancellationToken ct)
+    /// <param name="inFront">A fresh read of "is this account in front", called right before
+    /// RunMacro. The foreground flag is read once per tick; this closes most of the gap.</param>
+    public async Task<CallResult> StepAsync(bool foreground, CancellationToken ct, Func<bool>? inFront = null)
     {
         if (_macroId is null) throw new InvalidOperationException("No macro to step: call Begin first.");
         return _playbackId is null
-            ? await StartAsync(foreground, ct).ConfigureAwait(false)
+            ? await StartAsync(foreground, inFront, ct).ConfigureAwait(false)
             : await PollAsync(foreground, ct).ConfigureAwait(false);
     }
 
-    private async Task<CallResult> StartAsync(bool foreground, CancellationToken ct)
+    private async Task<CallResult> StartAsync(bool foreground, Func<bool>? inFront, CancellationToken ct)
     {
         var now = clock.Now;
         if (!foreground || now < _retryAt) return Waiting;
+        // Ur Task focuses the target on every run: never ask while someone else is in front.
+        if (inFront is not null && !inFront()) return Waiting;
 
-        var resp = await client.RunAsync(_macroId!, new[] { target }, ct).ConfigureAwait(false);
+        var resp = await client.RunAsync(_macroId!, new[] { target }, InterAltDelayMs, ct).ConfigureAwait(false);
         if (resp.Ok && !string.IsNullOrEmpty(resp.PlaybackId))
         {
             _playbackId = resp.PlaybackId;
@@ -1755,16 +1806,16 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj --filter "FullyQualifiedName~MacroCallTests"`
-Expected: PASS (19 counting theory rows).
+Expected: PASS (20 counting theory rows).
 
 Full suite: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj`
-Expected: **288 passed**.
+Expected: **290 passed**.
 
 - [ ] **Step 6: Commit**
 
 ```powershell
 git add Engine/MacroCall.cs tests/RoRoRo.UrOcr.Tests/Engine/PulseFakes.cs tests/RoRoRo.UrOcr.Tests/Engine/MacroCallTests.cs
-git commit -m "feat(engine): follow one Ur Task macro to its end" -m "Starts only with the account in front, polls GetPlayback, retries busy every second, reruns a macro a focus change interrupted, and stops on Esc, StopMacro, a missing Ur Task or any other refusal." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(engine): follow one Ur Task macro to its end" -m "Starts only with the account in front (read again right before RunMacro, no inter-alt delay), polls GetPlayback, retries busy every second, reruns a macro a focus change interrupted, and stops on Esc, StopMacro, a missing Ur Task or any other refusal." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1780,7 +1831,7 @@ git commit -m "feat(engine): follow one Ur Task macro to its end" -m "Starts onl
 - Consumes: `PulseConfig`, `PulseMacros`, `PulseMode`, `PulseValidation.Validate/SpotsOf` (Task 2); `ISpotReader`, `SpotReading`, `PulseOrder.Rank` (Task 3); `MacroCall`, `CallStatus`, `CallResult` (Task 4); existing `RingTracker.Vote(RingDefinition, IReadOnlyList<SpotSample>)`, `RingTracker.Pick(RingDefinition, IReadOnlyDictionary<string,int>, string?)`, `SpotSample(Order, Sampled, ToleranceRgb)`, `TriggerValidation.Find`, `MeasuredRing.RingOrder`, `IClock`. Tests: `PulseClock`, `ScriptedMacros` from `tests/.../Engine/PulseFakes.cs` (Task 4).
 - Produces:
   - `public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTop, Stopped }`
-  - `public sealed class PulseLoop(PulseConfig config, IReadOnlyList<RingDefinition> rings, IReadOnlyList<Trigger> triggers, ISpotReader reader, IMacroRunClient macros, IClock clock, Action<string> log)` with `long AccountUserId`, `PulseState State`, `string? StopReason`, `string? Layer`, `Task TickAsync(bool foreground, int pid, CancellationToken ct)`, `const int MaxStepsPerTick = 12`
+  - `public sealed class PulseLoop(PulseConfig config, IReadOnlyList<RingDefinition> rings, IReadOnlyList<Trigger> triggers, ISpotReader reader, IMacroRunClient macros, IClock clock, Action<string> log)` with `long AccountUserId`, `PulseState State`, `string? StopReason`, `string? Layer`, `Task TickAsync(bool foreground, int pid, CancellationToken ct, Func<bool>? inFront = null)`, `void NoteBehind()`, `const int MaxStepsPerTick = 12`
   - Test helpers in `PulseLoopFixtures.cs` (internal): `PulseFixtures` (`Navy`, `Black`, `Grey`, `Orange`, `Sky`, `Ring()`, `Spot(int)`, `Spots()`, `Macros()`, `Config(int target = 3, PulseMode mode = PulseMode.Top, long account = 42)`), `ScriptedReader : ISpotReader` (`Next`, `Reads`, static `All(Rgb, params (int Order, Rgb Colour)[])`).
 
 The macro ids in the fixtures are `id-off`, `id-on`, `id-top` and `id-clear-N` ... `id-clear-NW`.
@@ -2047,16 +2098,18 @@ public class PulseLoopTests
     }
 
     [Fact]
-    public async Task A_failed_check_on_a_clear_counts_as_nothing_cleared()
+    public async Task A_failed_check_on_a_clear_stops_the_loop()
     {
         var rig = Build();
-        foreach (var n in MeasuredRing.RingOrder) rig.Macros.Script($"id-clear-{n}", ScriptedMacros.CheckFailed);
+        rig.Macros.Script("id-clear-N", ScriptedMacros.CheckFailed);
 
-        await FirstRead(rig);
-        await Ticks(rig, 8);
+        await FirstRead(rig);             // Clear spot N started
+        await Tick(rig);                  // its check could not run
 
-        Assert.Equal(PulseState.Bursting, rig.Loop.State);
-        Assert.Contains(rig.Log, l => l.Contains("check failed"));
+        Assert.Equal(PulseState.Stopped, rig.Loop.State);
+        Assert.Contains("could not check", rig.Loop.StopReason);
+        await Tick(rig);
+        Assert.Equal(3, rig.Macros.Runs.Count);
     }
 
     [Fact]
@@ -2077,6 +2130,44 @@ public class PulseLoopTests
         Assert.Equal(PulseState.GoingToTop, rig.Loop.State);
         Assert.Equal("id-top", rig.Macros.RunIds.Last());
         Assert.Contains(rig.Log, l => l == "Went to top: 5 minutes on the grey layer");
+    }
+
+    [Fact]
+    public async Task Time_behind_does_not_count_toward_the_rock_cap()
+    {
+        var rig = Build();
+        SkipAllClears(rig);
+        await FirstRead(rig);             // t = 3 s, the grey layer starts
+        await Ticks(rig, 8);              // pass skipped everything: Auto Mine on started
+        await Tick(rig);                  // on finished: ride timer
+
+        await Tick(rig, front: false);    // behind from t = 3 s
+        rig.Clock.Advance(300_000);
+        await Tick(rig);                  // back at t = 303 s: the ride is over, Auto Mine off
+        await Tick(rig);                  // off finished: settle
+        rig.Clock.Advance(1000);
+        await Tick(rig);                  // read at t = 304 s: 1 s in front since the layer started
+
+        Assert.Equal(PulseState.Clearing, rig.Loop.State);
+        Assert.DoesNotContain("id-top", rig.Macros.RunIds);
+    }
+
+    [Fact]
+    public async Task Riding_through_an_upper_layer_never_trips_the_rock_cap()
+    {
+        var rig = Build(everywhere: PulseFixtures.Navy);
+        await FirstRead(rig);             // t = 3 s: navy, above the target, Auto Mine on started
+        await Tick(rig);                  // on finished: ride timer
+
+        rig.Clock.Advance(300_000);
+        await Tick(rig);                  // ride over: Auto Mine off
+        await Tick(rig);                  // off finished: settle
+        rig.Clock.Advance(1000);
+        await Tick(rig);                  // read: still navy, 301 s later
+
+        Assert.Equal(PulseState.Riding, rig.Loop.State);
+        Assert.Equal("id-on", rig.Macros.RunIds.Last());
+        Assert.DoesNotContain("id-top", rig.Macros.RunIds);
     }
 
     [Fact]
@@ -2265,8 +2356,9 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// Above the aim layer: ride again. Past it: Go to Top. At it: Clearing, one Clear spot per ring
 /// spot, ore first; Ur Task skips a spot with no outline. A pass that cleared something settles and
 /// reads again; a pass that cleared nothing rides a burst (Bursting) first. RockCapMinutes on one
-/// layer with nothing cleared: Go to Top. Each tick does everything it can and returns at the first
-/// wait. Nothing starts unless the account is in front; a playback already started is still followed.
+/// aim layer with nothing cleared (time behind or paused not counted): Go to Top. Each tick does
+/// everything it can and returns at the first wait. Nothing starts unless the account is in front,
+/// read again right before each macro; a playback already started is still followed.
 /// </summary>
 public sealed class PulseLoop
 {
@@ -2288,6 +2380,7 @@ public sealed class PulseLoop
     private readonly List<string> _skipped = new();
     private DateTimeOffset _progressAt;    // last new layer or cleared block, for the rock cap
     private bool _unreadableLogged;
+    private DateTimeOffset? _behindSince;  // first tick behind (or held), for the rock cap
 
     public PulseLoop(PulseConfig config, IReadOnlyList<RingDefinition> rings, IReadOnlyList<Trigger> triggers,
         ISpotReader reader, IMacroRunClient macros, IClock clock, Action<string> log)
@@ -2317,13 +2410,16 @@ public sealed class PulseLoop
 
     private PulseMacros M => _config.Macros!;
 
-    public async Task TickAsync(bool foreground, int pid, CancellationToken ct)
+    /// <param name="inFront">A fresh read of the foreground gate for this account, asked right
+    /// before each RunMacro (Ur Task focuses the target on every run).</param>
+    public async Task TickAsync(bool foreground, int pid, CancellationToken ct, Func<bool>? inFront = null)
     {
+        if (foreground) NoteFront(); else NoteBehind();
         for (var step = 0; step < MaxStepsPerTick && State != PulseState.Stopped; step++)
         {
             if (_call.Active)
             {
-                var r = await _call.StepAsync(foreground, ct).ConfigureAwait(false);
+                var r = await _call.StepAsync(foreground, ct, inFront).ConfigureAwait(false);
                 if (r.Status == CallStatus.Waiting) return;
                 OnCallEnded(r);
                 continue;
@@ -2331,6 +2427,17 @@ public sealed class PulseLoop
             if (!foreground) return;
             if (!Act(pid)) return;
         }
+    }
+
+    /// <summary>The account is behind, or the runner is held (F9, dry run): from now until it is
+    /// back in front does not count toward the rock cap.</summary>
+    public void NoteBehind() => _behindSince ??= _clock.Now;
+
+    private void NoteFront()
+    {
+        if (_behindSince is not { } since) return;
+        _behindSince = null;
+        if (Layer is not null) _progressAt += _clock.Now - since;
     }
 
     /// <summary>One move in the current state. False when it has to wait (a timer, an unreadable ring).</summary>
@@ -2400,16 +2507,17 @@ public sealed class PulseLoop
             _log($"{seen} is past the target ({aimName}): going to top");
             return Enter(PulseState.GoingToTop);
         }
+        if (number < aim)
+        {
+            _log($"{seen} is above the target ({aimName}): riding on");
+            return Enter(PulseState.Riding);
+        }
+        // The rock cap counts only while clearing (spec step 5), so the slow pulsed descent never trips it.
         if ((now - _progressAt).TotalMinutes >= _config.RockCapMinutes)
         {
             var unit = _config.RockCapMinutes == 1 ? "minute" : "minutes";
             _log($"Went to top: {_config.RockCapMinutes} {unit} on the {layer} layer");
             return Enter(PulseState.GoingToTop);
-        }
-        if (number < aim)
-        {
-            _log($"{seen} is above the target ({aimName}): riding on");
-            return Enter(PulseState.Riding);
         }
 
         var order = PulseOrder.Rank(samples, ring.Layers[number - 1].Rock);
@@ -2462,9 +2570,10 @@ public sealed class PulseLoop
                     _progressAt = _clock.Now;
                     break;
                 case CallStatus.CheckFailed:
-                    _skipped.Add(name);
-                    _log($"'{r.Label}': check failed ({r.Detail}), counted as nothing to clear");
-                    break;
+                    // A missing outline is "skipped"; check-failed means the check could not run.
+                    Stop($"'{r.Label}' stopped at its check ({r.Detail}): Ur Task could not check the spot " +
+                         "(window hidden, or a box outside it), so the pulse loop stopped rather than ride on blind.");
+                    return;
                 case CallStatus.Lost:
                     _skipped.Add(name);
                     _log($"'{r.Label}': {r.Detail} Counted as nothing to clear.");
@@ -2537,18 +2646,18 @@ Note on `return now >= _until && Enter(...)`: `_until` is set whenever `_macroDo
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj --filter "FullyQualifiedName~PulseLoopTests"`
-Expected: PASS (20).
+Expected: PASS (22).
 
 If a tick-count test fails by one tick, re-derive it from the rule "each tick does everything it can and returns at the first wait" and the FirstRead comments before changing the loop: the tests pin that rule, not just the end states.
 
 Full suite: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj`
-Expected: **308 passed**.
+Expected: **312 passed**.
 
 - [ ] **Step 6: Commit**
 
 ```powershell
 git add Engine/PulseLoop.cs tests/RoRoRo.UrOcr.Tests/Engine/PulseLoopFixtures.cs tests/RoRoRo.UrOcr.Tests/Engine/PulseLoopTests.cs
-git commit -m "feat(engine): the ore stop pulse loop" -m "Ride a burst, pause, read the layer on the calm frame, and at the target clear every ring spot ore first. Nothing cleared rides another burst; past the target or 5 minutes on one layer without a clear goes to top." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(engine): the ore stop pulse loop" -m "Ride a burst, pause, read the layer on the calm frame, and at the target clear every ring spot ore first. Nothing cleared rides another burst; past the target, or 5 minutes in front on the target layer without a clear, goes to top. A clear whose check could not run stops the loop." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2568,7 +2677,7 @@ git commit -m "feat(engine): the ore stop pulse loop" -m "Ride a burst, pause, r
 - Consumes: `PulseLoop`, `PulseState` (Task 5); `ISpotReader`, `SpotReader` (Task 3); `TriggerStore.Pulses`, `TriggerStore.UpsertPulse` (Task 2); existing `IForegroundCheck`, `IElevationCheck`, `IClock`, `ActivityLog`, `TriggerCoordinator`. Tests: `PulseClock`, `ScriptedMacros` (Task 4, `PulseFakes.cs`), `PulseFixtures` (Task 5, `PulseLoopFixtures.cs`).
 - Produces:
   - `public interface IAccountLookup { bool TryGetUserId(int pid, out long userId); }` (namespace `RoRoRo.UrOcr.Engine`), implemented by `AccountRegistry`
-  - `public sealed class PulseRunner(TriggerStore store, ISpotReader reader, IMacroRunClient macros, IForegroundCheck foreground, IElevationCheck elevation, IAccountLookup accounts, IClock clock, ActivityLog log, Action<string>? diag = null)` with `TickRateHz`, `WatchdogTimeout`, `Func<bool> Hold`, `PulseLoop? LoopFor(long)`, `bool OwnsRing(int pid, string ringId)`, `Task TickOnceAsync(CancellationToken)`, `Start()`, `Task StopAsync()`
+  - `public sealed class PulseRunner(TriggerStore store, ISpotReader reader, IMacroRunClient macros, IForegroundCheck foreground, IElevationCheck elevation, IAccountLookup accounts, IClock clock, ActivityLog log, Action<string>? diag = null)` with `TickRateHz`, `WatchdogTimeout`, `Func<bool> Hold` (held ticks call `NoteBehind` on every loop), a fresh foreground read passed to each loop as `inFront`, `PulseLoop? LoopFor(long)`, `bool OwnsRing(int pid, string ringId)`, `Task TickOnceAsync(CancellationToken)`, `Start()`, `Task StopAsync()`
   - `ActivityKind.Pulse` (appended last)
   - `TriggerCoordinator(..., Action<string>? diag = null, Func<int, string, bool>? ringOwner = null)`: a trigger whose ring (`Ring.RingId` or `Layer.RingId`) is owned for this tick's foreground pid is skipped and disarmed.
   - `PluginRuntime.Pulse : PulseRunner?`
@@ -2591,8 +2700,10 @@ public class PulseRunnerTests
     {
         public bool IsAlt = true;
         public int Pid = 100;
+        /// <summary>Pids handed out first, one per read, before falling back to Pid.</summary>
+        public Queue<int> Next { get; } = new();
         public bool IsForegroundAnAlt() => IsAlt;
-        public int GetForegroundPid() => Pid;
+        public int GetForegroundPid() => Next.Count > 0 ? Next.Dequeue() : Pid;
     }
     private sealed class Elevation : IElevationCheck
     {
@@ -2645,6 +2756,19 @@ public class PulseRunnerTests
         Assert.Equal(2, rig.Macros.Runs.Count);
         Assert.Equal(new[] { "43" }, rig.Macros.Runs[1].Targets);
         Assert.Single(rig.Macros.Polls);   // 42 still followed its playback from behind
+    }
+
+    [Fact]
+    public async Task The_front_is_checked_again_right_before_a_macro_starts()
+    {
+        var rig = Build(PulseFixtures.Config(account: 42));
+        rig.Front.Next.Enqueue(100);      // the tick starts with 42 in front
+        rig.Front.Pid = 300;              // then Este tabs to a window that is no RoRoRo account
+
+        await Tick(rig);
+
+        Assert.Empty(rig.Macros.Runs);
+        Assert.Equal(PulseState.Riding, rig.Runner.LoopFor(42)!.State);
     }
 
     [Fact]
@@ -2951,7 +3075,12 @@ public sealed class PulseRunner(
 
     public async Task TickOnceAsync(CancellationToken ct)
     {
-        if (Hold()) return;
+        if (Hold())
+        {
+            // Paused or dry run: nothing acts, and the time does not count toward any rock cap.
+            foreach (var held in _loops.Values) held.NoteBehind();
+            return;
+        }
         Sync();
         if (_loops.Count == 0) return;
 
@@ -2961,7 +3090,9 @@ public sealed class PulseRunner(
             ct.ThrowIfCancellationRequested();
             try
             {
-                await loop.TickAsync(loop.AccountUserId == front, pid, ct);
+                // Ur Task focuses the target on every run, so the gate is read again right before one.
+                var account = loop.AccountUserId;
+                await loop.TickAsync(account == front, pid, ct, () => Front().Front == account);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -3099,19 +3230,19 @@ In `StopAsync`, after `if (Coordinator is not null) await Coordinator.StopAsync(
 - [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj --filter "FullyQualifiedName~PulseRunnerTests|FullyQualifiedName~RingOwnershipTests"`
-Expected: PASS (7 + 3).
+Expected: PASS (8 + 3).
 
 Build the app too: `dotnet build rororo-ur-ocr.csproj`
 Expected: `Build succeeded`, 0 errors.
 
 Full suite: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj`
-Expected: **318 passed**. Every existing coordinator test passes unchanged (`ringOwner` defaults to null).
+Expected: **323 passed**. Every existing coordinator test passes unchanged (`ringOwner` defaults to null).
 
 - [ ] **Step 8: Commit**
 
 ```powershell
 git add Engine/PulseRunner.cs Engine/ActivityLog.cs Engine/TriggerCoordinator.cs PluginHost/AccountRegistry.cs PluginRuntime.cs tests/RoRoRo.UrOcr.Tests/Engine/PulseRunnerTests.cs tests/RoRoRo.UrOcr.Tests/Engine/RingOwnershipTests.cs
-git commit -m "feat(engine): run pulse loops for the account in front" -m "Only the foreground account's loop acts, pause and dry run hold it, and an account with an enabled pulse owns its ring: the 0.5.0 ring triggers stand down for that account and keep working for every other." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(engine): run pulse loops for the account in front" -m "Only the foreground account's loop acts, checked again right before each macro, pause and dry run hold it, and an account with an enabled pulse owns its ring: the 0.5.0 ring triggers stand down for that account and keep working for every other." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -3518,7 +3649,7 @@ Run: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj --filter "F
 Expected: PASS (8 + 5 new, ring import tests unchanged).
 
 Full suite: `dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj`
-Expected: **331 passed**.
+Expected: **336 passed**.
 
 - [ ] **Step 6: Commit**
 
@@ -3573,7 +3704,7 @@ In `CHANGELOG.md`, insert after the `# Changelog` line and its blank line:
 
 ### Added
 
-- **Ore stop pulse.** Riding and watching at once did not work in Mine #8 (effects cover the ring, and plain rock spans navy to hot magenta), so each account now pulses: Auto Mine rides for a short burst, stops, waits a second for the effects to settle, and reads the layer on that calm frame. Above your target layer it rides on. At the target it runs Ur Task's "Clear spot" macro for each of the eight ring spots, ore first (the spot furthest from the layer's rock), then the rest; Ur Task skips any spot without the white outline. A pass that clears nothing rides another burst. Past the target it presses Go to Top, and 5 minutes on one layer without clearing a block also goes to the top, logged as `Went to top: 5 minutes on the <layer> layer`.
+- **Ore stop pulse.** Riding and watching at once did not work in Mine #8 (effects cover the ring, and plain rock spans navy to hot magenta), so each account now pulses: Auto Mine rides for a short burst, stops, waits a second for the effects to settle, and reads the layer on that calm frame. Above your target layer it rides on. At the target it runs Ur Task's "Clear spot" macro for each of the eight ring spots, ore first (the spot furthest from the layer's rock), then the rest; Ur Task skips any spot without the white outline. A pass that clears nothing rides another burst. Past the target it presses Go to Top, and 5 minutes on the target layer without clearing a block also goes to the top, logged as `Went to top: 5 minutes on the <layer> layer` (time with the account behind or paused does not count).
 - **Settings per account:** target layer (1 to 3, counting rock types down) and whether to clear on it (`top`) or on the layer above it (`oneAbove`, for an under-powered account); ride burst (2 s); pause before reading (1 s); rock cap (5 minutes).
 - `RoRoRo.UrOcr.exe --import-pulse <pulse.json>` writes the pulse settings into triggers.json without opening a window, looking up Ur Task's macros by name. Import the ring first (`--import-ring`), and close Ur OCR first. The result is in `pulse-import.log`.
 - Ur OCR asks Ur Task how each macro ended (`GetPlayback`), so the pulse waits for a macro to finish before its next move.
@@ -3586,8 +3717,8 @@ In `CHANGELOG.md`, insert after the `# Changelog` line and its blank line:
 ### Notes
 
 - The pulse acts only while its own account is the foreground alt, and never brings a window to the front. Pause all (F9) and dry run pause the pulse too.
-- If a macro stops at a colour check (a popup or captcha over the Auto Mine dot), if you press Esc during one of its macros, or if Ur Task closes, that account's pulse stops and says why. Restart Ur OCR to start it again.
-- Needs the Ur Task release with the "Clear spot" macros and the outline check. An older Ur Task makes the pulse stop with `Unknown method 'GetPlayback'` or `No Ur Task macro is named "Clear spot N"`.
+- If a macro stops at a colour check (a popup or captcha over the Auto Mine dot, or a Clear spot that cannot see the window), if you press Esc during one of its macros, or if Ur Task closes, that account's pulse stops and says why. Restart Ur OCR to start it again.
+- Needs Ur Task 0.11.0 or later (the "Clear spot" macros, the outline check and the `skipped` reason). An older Ur Task makes the pulse stop with `Unknown method 'GetPlayback'` or `No Ur Task macro is named "Clear spot N"`.
 - Downgrading to 0.5.0 keeps your triggers, but 0.5.0 drops the pulse settings the next time it saves.
 ```
 
@@ -3627,7 +3758,7 @@ dotnet test tests/RoRoRo.UrOcr.Tests/RoRoRo.UrOcr.Tests.csproj
 pwsh -NoProfile -File build/build-plugin.ps1
 ```
 
-Expected: build succeeds; **331 passed**; the plugin build prints `Building rororo-ur-ocr v0.6.0` and ends without errors.
+Expected: build succeeds; **336 passed**; the plugin build prints `Building rororo-ur-ocr v0.6.0` and ends without errors.
 
 - [ ] **Step 6: Commit**
 
@@ -3691,7 +3822,7 @@ The loop cannot work if a skipped clear reads as a finished one (Global Constrai
 Select-String -Path "$env:LOCALAPPDATA\626Labs\RoRoRoUrTask\logs\ur-task.log" -Pattern "bridge playback .* 'Clear spot N'" | Select-Object -Last 3
 ```
 
-Pass: the last line reads `bridge playback <id> 'Clear spot N': finished (skipped)...` (Ur Task's log prints the same state and reason `GetPlayback` returns). Also accepted: `failed (check-failed)` (Ur OCR counts it as a skip). **A plain `finished` with no `(skipped)` fails this step: stop and hand it back to the Ur Task half.** Then Este stands the main next to a breakable block at N and runs it again: pass is `finished` with no reason, and the block breaks.
+Pass: the last line reads `bridge playback <id> 'Clear spot N': finished (skipped)...` (Ur Task's log prints the same state and reason `GetPlayback` returns). **A plain `finished` with no `(skipped)` fails this step, and so does `failed (check-failed)` (the pulse stops on it): stop and hand it back to the Ur Task half.** Then Este stands the main next to a breakable block at N and runs it again: pass is `finished` with no reason, and the block breaks.
 
 - [ ] **Step 3: Measure the outline threshold (numbers for the Ur Task half)**
 
@@ -3868,14 +3999,14 @@ $p.pulses[0] | Add-Member -Force -NotePropertyName rockCapMinutes -NotePropertyV
 $p | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $sweep "pulse.rockcap-1min.json") -Encoding utf8
 ```
 
-Close Ur OCR, import `pulse.rockcap-1min.json` as in Step 6 (only the `--import-pulse` line), start Ur OCR. Este keeps the main on one layer where nothing is outlined (a hard layer, or next to cleared-out holes). Pass: within about a minute and a pulse, `pulse <main>: Went to top: 1 minute on the <layer> layer`, a `Go to Top` playback ending `finished`, and reads of the top layer after it. Then close Ur OCR, re-import `pulse.json`, confirm `rock cap 5 min` in `pulse-import.log`, and start Ur OCR.
+Close Ur OCR, import `pulse.rockcap-1min.json` as in Step 6 (only the `--import-pulse` line), start Ur OCR. Este keeps the main on its target layer (layer 3) where nothing is outlined (next to cleared-out holes); the rock cap no longer counts on upper layers. Pass: within about a minute and a pulse, `pulse <main>: Went to top: 1 minute on the <layer> layer`, a `Go to Top` playback ending `finished`, and reads of the top layer after it. Then close Ur OCR, re-import `pulse.json`, confirm `rock cap 5 min` in `pulse-import.log`, and start Ur OCR.
 
 - [ ] **Step 9: The alt, and the account gate**
 
 Este brings the alt to the front (the main behind, idle). Pass criteria:
 1. **The alt runs its own target:** `pulse <alt>: ... is the target: clearing ...` on layer `<altTarget>` (or the layer above it for `oneAbove`), not layer 3.
 2. **Only the front account acts:** while the alt is in front, no `pulse <main>:` line starts a macro (the main may only log a playback it had already started), and `ur-task.log` shows playbacks for the alt only.
-3. **No focus stealing:** Este switches between the two windows a few times, and between Roblox and another program. The windows never jump to the front on their own; each account's loop picks up where it was when it comes back (a ride that ran out while behind pauses at once).
+3. **No focus stealing:** Este switches between the two windows a few times, and between Roblox and another program, including right as a pulse is about to start a macro (just after a ride ends). The windows never jump to the front on their own (Ur Task focuses the target on every run, so a jump here means the foreground re-check before `RunMacro` missed; note the `ur-task.log` line); each account's loop picks up where it was when it comes back (a ride that ran out while behind pauses at once).
 4. **Tabbing away mid-clear:** Este focuses another program during a `Clear spot` hold. `ur-task.log` shows the playback ending (foreground lost); `ur-ocr.log` shows `'Clear spot <n>' was interrupted (...); it runs again when the account is in front`, and on return that spot is cleared again.
 
 - [ ] **Step 10: Stopping**
@@ -3914,8 +4045,8 @@ Replace the angle-bracket body with the observed results. A failed criterion bec
 
 **2. Placeholder scan.** Every code step carries complete code. The angle-bracket commit bodies in Task 9 (Steps 5 and 11) are live results that do not exist until the run, and each says exactly what goes there. The account ids in Task 9 Step 6 are read live in Step 1 by design (they are not committed). The Ur Task outline field names are owned by the Ur Task half's plan and named as such.
 
-**3. Type consistency.** Checked across tasks: `GetPlaybackResponse(Ok, State, Reason, Detail, StepIndex)`, `BridgeContract.ForPlayback`, `BridgeReasons.*`, `PlaybackStates.*`, `IMacroRunClient.GetPlaybackAsync(string, CancellationToken)`; `PulseConfig(AccountUserId, RingId, TargetLayer, Mode, BurstMs, SettleMs, RockCapMinutes, Enabled, Macros)`, `.AimLayer`, `PulseMacros(AutoMineOff, AutoMineOn, GoToTop, Clear)`, `PulseMode.Top/OneAbove`, `PulseMacroNames.AutoMineOff/AutoMineOn/GoToTop/Clear(string)`, `PulseFile(Schema, Pulses)`, `PulseValidation.Validate/SpotsOf/SpotCount`, `TriggerStore.Pulses/UpsertPulse`; `SpotReading(Order, Sampled, ToleranceRgb, Ignore)`, `ISpotReader.Read(int, IReadOnlyList<Trigger>)`, `SpotReader(ICaptureSource, IWindowMetrics)`, `PulseOrder.Rank/IsOre/Nearest`; `CallStatus`, `CallResult(Status, Label, Detail)`, `MacroCall(client, target, clock, log)`, `.Begin/.StepAsync/.Active/.Label/.RetryMs/.MaxInterruptions`; `PulseState`, `PulseLoop(config, rings, triggers, reader, macros, clock, log)`, `.TickAsync(bool, int, CancellationToken)/.State/.StopReason/.Layer/.AccountUserId`; `IAccountLookup.TryGetUserId`, `PulseRunner(store, reader, macros, foreground, elevation, accounts, clock, log, diag)`, `.Hold/.LoopFor/.OwnsRing/.TickOnceAsync/.Start/.StopAsync`, `ActivityKind.Pulse`; `TriggerCoordinator(..., ringOwner)`; `PulseImporter.Build/Apply/Resolve`, `PulseImportCommand.Flag/Run/Describe`, `RingImportCommand.OtherInstanceRunning`. Test fakes: `PulseClock.Advance`, `ScriptedMacros.Runs/RunIds/Polls/RunReplies/Script/Refusal` and its static replies (Task 4) are what Tasks 5 and 6 use; `PulseFixtures` and `ScriptedReader` (Task 5) are what Task 6 uses. The log strings asserted in tests (`started`, `above the target`, `past the target`, `is the target: clearing`, `nothing in reach to clear`, `cleared N NE ...`, `Went to top: 5 minutes on the grey layer`, `no layer on a calm frame`, `could not read the ring`, `check failed`, `no longer knows`, `stopped: Ur Task is not running`, `popup or captcha`, `stopped in Ur Task`, `Esc`, `interrupted`) match the strings in `PulseLoop` and `MacroCall`.
+**3. Type consistency.** Checked across tasks: `GetPlaybackResponse(Ok, State, Reason, Detail, StepIndex)`, `BridgeContract.ForPlayback`, `BridgeReasons.*`, `PlaybackStates.*`, `IMacroRunClient.GetPlaybackAsync(string, CancellationToken)`; `PulseConfig(AccountUserId, RingId, TargetLayer, Mode, BurstMs, SettleMs, RockCapMinutes, Enabled, Macros)`, `.AimLayer`, `PulseMacros(AutoMineOff, AutoMineOn, GoToTop, Clear)`, `PulseMode.Top/OneAbove`, `PulseMacroNames.AutoMineOff/AutoMineOn/GoToTop/Clear(string)`, `PulseFile(Schema, Pulses)`, `PulseValidation.Validate/SpotsOf/SpotCount`, `TriggerStore.Pulses/UpsertPulse`; `SpotReading(Order, Sampled, ToleranceRgb, Ignore)`, `ISpotReader.Read(int, IReadOnlyList<Trigger>)`, `SpotReader(ICaptureSource, IWindowMetrics)`, `PulseOrder.Rank/IsOre/Nearest`; `CallStatus`, `CallResult(Status, Label, Detail)`, `MacroCall(client, target, clock, log)`, `.Begin/.StepAsync(foreground, ct, inFront?)/.Active/.Label/.RetryMs/.MaxInterruptions/.InterAltDelayMs`, `IMacroRunClient.RunAsync(macroId, targets, interAltDelayMs, ct)`, `BridgeContract.ForMacro(macroId, targets, interAltDelayMs?)`; `PulseState`, `PulseLoop(config, rings, triggers, reader, macros, clock, log)`, `.TickAsync(bool, int, CancellationToken, Func<bool>?)/.NoteBehind/.State/.StopReason/.Layer/.AccountUserId`; `IAccountLookup.TryGetUserId`, `PulseRunner(store, reader, macros, foreground, elevation, accounts, clock, log, diag)`, `.Hold/.LoopFor/.OwnsRing/.TickOnceAsync/.Start/.StopAsync`, `ActivityKind.Pulse`; `TriggerCoordinator(..., ringOwner)`; `PulseImporter.Build/Apply/Resolve`, `PulseImportCommand.Flag/Run/Describe`, `RingImportCommand.OtherInstanceRunning`. Test fakes: `PulseClock.Advance`, `ScriptedMacros.Runs/RunIds/Polls/RunReplies/Script/Refusal` and its static replies (Task 4) are what Tasks 5 and 6 use; `PulseFixtures` and `ScriptedReader` (Task 5) are what Task 6 uses. The log strings asserted in tests (`started`, `above the target`, `past the target`, `is the target: clearing`, `nothing in reach to clear`, `cleared N NE ...`, `Went to top: 5 minutes on the grey layer`, `no layer on a calm frame`, `could not read the ring`, `could not check`, `no longer knows`, `stopped: Ur Task is not running`, `popup or captcha`, `stopped in Ur Task`, `Esc`, `interrupted`) match the strings in `PulseLoop` and `MacroCall`.
 
-**4. Review Focus.** Five lines, each pinned by named tests in its owning task: Esc in front (Task 4 `Aborted_while_in_front_stops`, Task 5 `A_playback_stopped_in_Ur_Task_stops_the_loop`); tabbing away (Task 5 `Waits_while_the_account_is_not_in_front`, Task 6 `Only_the_account_in_front_acts`); a popup over the dot (Task 5 `A_failed_check_on_Auto_Mine_off_stops_the_loop`); Ur Task restarted (Task 4 `A_lost_playback_is_reported`, Task 5 `A_lost_playback_moves_on`); Ur Task closed or too old (Task 4 `Missing_Ur_Task_stops`, `An_Ur_Task_without_GetPlayback_stops`, Task 5 `Missing_Ur_Task_stops_with_a_log_line`). Two paths on one ring: Task 6 `A_ring_owned_by_a_pulse_loop_does_not_fire`.
+**4. Review Focus.** Five lines, each pinned by named tests in its owning task: Esc in front (Task 4 `Aborted_while_in_front_stops`, Task 5 `A_playback_stopped_in_Ur_Task_stops_the_loop`); tabbing away (Task 5 `Waits_while_the_account_is_not_in_front`, Task 6 `Only_the_account_in_front_acts`); a popup over the dot or a clear whose check could not run (Task 5 `A_failed_check_on_Auto_Mine_off_stops_the_loop`, `A_failed_check_on_a_clear_stops_the_loop`); Ur Task restarted (Task 4 `A_lost_playback_is_reported`, Task 5 `A_lost_playback_moves_on`); Ur Task closed or too old (Task 4 `Missing_Ur_Task_stops`, `An_Ur_Task_without_GetPlayback_stops`, Task 5 `Missing_Ur_Task_stops_with_a_log_line`). Two paths on one ring: Task 6 `A_ring_owned_by_a_pulse_loop_does_not_fire`.
 
-**Test counts** (baseline 227): Task 1 +8 = 235; Task 2 +26 = 261; Task 3 +8 = 269; Task 4 +19 = 288; Task 5 +20 = 308; Task 6 +10 = 318; Task 7 +13 = 331. Theory rows count as tests. Verified before handoff: every code block in Tasks 1 to 7 was applied to a scratch copy of `feat/ore-stop` at `05000ee`; the app built with 0 errors and the suite ran 331 passed, 0 failed.
+**Test counts** (baseline 227): Task 1 +9 = 236; Task 2 +26 = 262; Task 3 +8 = 270; Task 4 +20 = 290; Task 5 +22 = 312; Task 6 +11 = 323; Task 7 +13 = 336. Theory rows count as tests. Verified before handoff: every code block in Tasks 1 to 7 was applied to a scratch copy of `feat/ore-stop` at `05000ee`; the app built with 0 errors and the suite ran 331 passed, 0 failed. After the preflight rulings (F1, F3 to F8; F2 is fixed in the Ur Task half), the blocks were re-applied to a scratch copy of `b1357c5` and the app and test project build with 0 errors; the 336 count is traced by hand, not yet run.
