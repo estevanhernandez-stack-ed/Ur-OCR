@@ -21,7 +21,7 @@ public enum CallStatus
 public sealed record CallResult(CallStatus Status, string Label, string? Detail = null);
 
 /// <summary>
-/// Runs one Ur Task macro for one account and follows it to its end, one tick at a time.
+/// Runs one Ur Task macro (or one ClearAt call) for one account and follows it to its end, one tick at a time.
 /// Starting needs the account in front, read again right before RunMacro when the caller gives
 /// <c>inFront</c> (Ur Task focuses the target on every run); polling does not. busy, ack-timeout and
 /// no-targets-resolved retry every <see cref="RetryMs"/>. A playback that ends aborted or refused
@@ -36,7 +36,7 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
     /// <summary>Ur Task's focus-to-play wait: none, the account is already in front.</summary>
     public const int InterAltDelayMs = 0;
 
-    private string? _macroId;
+    private Func<CancellationToken, Task<RunMacroResponse>>? _start;
     private string _label = "";
     private string? _playbackId;
     private DateTimeOffset _retryAt = DateTimeOffset.MinValue;
@@ -44,12 +44,27 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
     private int _interruptions;
     private bool _sawBehind;
 
-    public bool Active => _macroId is not null;
+    public bool Active => _start is not null;
     public string Label => _label;
 
-    public void Begin(string macroId, string label)
+    public void Begin(string macroId, string label) =>
+        Arm(label, ct => client.RunAsync(macroId, new[] { target }, InterAltDelayMs, ct));
+
+    /// <summary>One ClearAt for this account: every point in order as one playback, followed through
+    /// GetPlayback like a macro. The request is built once, so a busy retry or an interrupted rerun
+    /// sends the same points.</summary>
+    public void BeginClearAt(ClearAtClient size, IReadOnlyList<ClearAtPoint> points, ClearAtOutline outline)
     {
-        _macroId = macroId;
+        var request = BridgeContract.ForClearAt(target, size, points, outline);
+        Arm(ClearAtLabel(points.Count), ct => client.ClearAtAsync(request, ct));
+    }
+
+    /// <summary>The name Ur Task's log gives a ClearAt playback.</summary>
+    public static string ClearAtLabel(int points) => $"ClearAt ({points} {(points == 1 ? "point" : "points")})";
+
+    private void Arm(string label, Func<CancellationToken, Task<RunMacroResponse>> start)
+    {
+        _start = start;
         _label = label;
         _playbackId = null;
         _retryAt = DateTimeOffset.MinValue;
@@ -62,7 +77,7 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
     /// RunMacro. The foreground flag is read once per tick; this closes most of the gap.</param>
     public async Task<CallResult> StepAsync(bool foreground, CancellationToken ct, Func<bool>? inFront = null)
     {
-        if (_macroId is null) throw new InvalidOperationException("No macro to step: call Begin first.");
+        if (_start is null) throw new InvalidOperationException("No macro to step: call Begin first.");
         return _playbackId is null
             ? await StartAsync(foreground, inFront, ct).ConfigureAwait(false)
             : await PollAsync(foreground, ct).ConfigureAwait(false);
@@ -75,7 +90,7 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
         // Ur Task focuses the target on every run: never ask while someone else is in front.
         if (inFront is not null && !inFront()) return Waiting;
 
-        var resp = await client.RunAsync(_macroId!, new[] { target }, InterAltDelayMs, ct).ConfigureAwait(false);
+        var resp = await _start!(ct).ConfigureAwait(false);
         if (resp.Ok && !string.IsNullOrEmpty(resp.PlaybackId))
         {
             _playbackId = resp.PlaybackId;
@@ -165,7 +180,7 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
     private CallResult End(CallStatus status, string? detail)
     {
         var label = _label;
-        _macroId = null;
+        _start = null;
         _playbackId = null;
         return new CallResult(status, label, detail);
     }

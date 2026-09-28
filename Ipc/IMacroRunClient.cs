@@ -16,4 +16,11 @@ public interface IMacroRunClient
     Task<GetPlaybackResponse> GetPlaybackAsync(string playbackId, CancellationToken ct)
         => Task.FromResult(new GetPlaybackResponse(false, null, BridgeReasons.Refused,
             "This client cannot ask Ur Task about playbacks.", null));
+
+    /// <summary>Ur Task's ClearAt: every point as one playback, followed with GetPlaybackAsync. The
+    /// default refuses so a client that cannot send it (the trigger tests' fakes) still compiles;
+    /// MacroRunClient sends it.</summary>
+    Task<RunMacroResponse> ClearAtAsync(ClearAtRequest request, CancellationToken ct)
+        => Task.FromResult(new RunMacroResponse(false, null, false, BridgeReasons.Refused,
+            "This client cannot ask Ur Task to clear at points."));
 }

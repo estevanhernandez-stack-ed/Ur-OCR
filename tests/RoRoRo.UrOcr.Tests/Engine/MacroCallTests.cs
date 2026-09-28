@@ -20,6 +20,96 @@ public class MacroCallTests
 
     private static Task<CallResult> Step(Rig r, bool front = true) => r.Call.StepAsync(front, CancellationToken.None);
 
+    private static readonly ClearAtClient Size = new(800, 599);
+    private static readonly ClearAtOutline Outline = new(50, 50, 60, 225);
+
+    private static Rig BuildClearAt(int points = 3)
+    {
+        var macros = new ScriptedMacros();
+        var clock = new PulseClock();
+        var log = new List<string>();
+        var call = new MacroCall(macros, "42", clock, log.Add);
+        call.BeginClearAt(Size,
+            Enumerable.Range(1, points).Select(n => new ClearAtPoint(100 + n, 200, $"stone {n}")).ToList(), Outline);
+        return new Rig(call, macros, clock, log);
+    }
+
+    [Fact]
+    public async Task A_ClearAt_starts_on_the_account_and_is_followed_through_GetPlayback()
+    {
+        var rig = BuildClearAt();
+
+        Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal("ClearAt", req.Method);
+        Assert.Equal("42", req.Target);
+        Assert.Equal(Size, req.Client);
+        Assert.Equal(Outline, req.Outline);
+        Assert.Equal(3, req.Points.Count);
+        Assert.Null(req.MaxMsPerPoint);
+
+        var end = await Step(rig);
+        Assert.Equal(CallStatus.Done, end.Status);
+        Assert.Equal("ClearAt (3 points)", end.Label);
+        Assert.Equal(new[] { "pb1" }, rig.Macros.Polls);
+        Assert.False(rig.Call.Active);
+    }
+
+    [Fact]
+    public async Task A_ClearAt_that_skipped_every_point_is_Skipped()
+    {
+        var rig = BuildClearAt();
+        rig.Macros.Script(ScriptedMacros.ClearAtId, ScriptedMacros.Skipped);
+
+        await Step(rig);
+
+        Assert.Equal(CallStatus.Skipped, (await Step(rig)).Status);
+    }
+
+    [Fact]
+    public async Task A_ClearAt_waits_until_the_account_is_in_front_right_before_it_starts()
+    {
+        var rig = BuildClearAt(points: 1);
+
+        Assert.Equal(CallStatus.Waiting, (await rig.Call.StepAsync(true, CancellationToken.None, () => false)).Status);
+        Assert.Empty(rig.Macros.ClearAts);
+        Assert.Equal("ClearAt (1 point)", rig.Call.Label);
+
+        await rig.Call.StepAsync(true, CancellationToken.None, () => true);
+        Assert.Single(rig.Macros.ClearAts);
+    }
+
+    [Fact]
+    public async Task An_Ur_Task_without_ClearAt_stops_with_its_reason()
+    {
+        var rig = BuildClearAt();
+        rig.Macros.ClearAtReplies.Enqueue(new RunMacroResponse(false, null, false, "refused", "Unknown method 'ClearAt'."));
+
+        var end = await Step(rig);
+
+        Assert.Equal(CallStatus.Stop, end.Status);
+        Assert.Contains("ClearAt (3 points)", end.Detail);
+        Assert.Contains("Unknown method 'ClearAt'", end.Detail);
+        Assert.False(rig.Call.Active);
+    }
+
+    [Fact]
+    public async Task A_busy_ClearAt_tries_again_after_a_second_with_the_same_points()
+    {
+        var rig = BuildClearAt();
+        rig.Macros.ClearAtReplies.Enqueue(ScriptedMacros.Refusal("busy"));
+
+        Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);
+        Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);
+        Assert.Single(rig.Macros.ClearAts);
+
+        rig.Clock.Advance(MacroCall.RetryMs);
+        Assert.Equal(CallStatus.Waiting, (await Step(rig)).Status);
+        Assert.Equal(2, rig.Macros.ClearAts.Count);
+        Assert.Same(rig.Macros.ClearAts[0], rig.Macros.ClearAts[1]);
+        Assert.Equal(CallStatus.Done, (await Step(rig)).Status);
+    }
+
     [Fact]
     public async Task Starts_on_the_account_then_reports_the_end()
     {

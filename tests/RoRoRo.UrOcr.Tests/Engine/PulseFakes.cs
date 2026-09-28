@@ -33,6 +33,20 @@ internal sealed class ScriptedMacros : IMacroRunClient
     public List<string> Polls { get; } = new();
     public Queue<RunMacroResponse> RunReplies { get; } = new();
 
+    /// <summary>The id a ClearAt playback is listed under in Runs and scripted with in Script.</summary>
+    public const string ClearAtId = "clear-at";
+    public List<ClearAtRequest> ClearAts { get; } = new();
+    /// <summary>Answers to ClearAt, used before RunReplies and the default accept.</summary>
+    public Queue<RunMacroResponse> ClearAtReplies { get; } = new();
+
+    public Task<RunMacroResponse> ClearAtAsync(ClearAtRequest request, CancellationToken ct)
+    {
+        ClearAts.Add(request);
+        if (ClearAtReplies.Count == 0) return RunAsync(ClearAtId, new[] { request.Target }, null, ct);
+        Runs.Add((ClearAtId, new[] { request.Target }, null));
+        return Task.FromResult(ClearAtReplies.Dequeue());
+    }
+
     private readonly Dictionary<string, Queue<GetPlaybackResponse>> _scripts = new();
     private readonly Dictionary<string, string> _macroOf = new();
     private int _next;

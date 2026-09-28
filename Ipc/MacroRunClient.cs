@@ -36,6 +36,14 @@ public sealed class MacroRunClient : IMacroRunClient
             "Asked Ur Task how a playback is going; it did not answer within the tick window.",
             ct);
 
+    /// <summary>One ClearAt playback. Ur Task acks with a playback id or a refusal: busy, a bad
+    /// point or box, or "Unknown method 'ClearAt'." from an Ur Task without it.</summary>
+    public Task<RunMacroResponse> ClearAtAsync(ClearAtRequest request, CancellationToken ct) =>
+        ExchangeAsync(request,
+            (reason, detail) => new RunMacroResponse(false, null, false, reason, detail),
+            "ClearAt sent; Ur Task did not ack within the tick window.",
+            ct);
+
     /// <summary>One request, one response, one connection. Never throws: a missing Ur Task, a closed
     /// pipe or a cancelled wait each come back as a refusal built by <paramref name="fail"/>.</summary>
     private async Task<TResponse> ExchangeAsync<TRequest, TResponse>(
