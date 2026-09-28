@@ -79,9 +79,33 @@ public class RingStorageTests
         var s = new TriggerStore(path);
         var ring = Assert.Single(s.Rings);
         Assert.Null(ring.Finders);
+        Assert.Null(ring.LayerMinShare);
+        Assert.Null(ring.LayerLead);
 
         s.UpsertRing(ring);
         Assert.DoesNotContain("finders", File.ReadAllText(path));
+        Assert.DoesNotContain("layerMinShare", File.ReadAllText(path));
+        Assert.DoesNotContain("layerLead", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void Layer_share_settings_survive_a_reload()
+    {
+        var path = TempFile();
+        new TriggerStore(path).UpsertRing(Ring() with { LayerMinShare = 0.06, LayerLead = 1.8 });
+
+        var ring = Assert.Single(new TriggerStore(path).Rings);
+
+        Assert.Equal((0.06, 1.8), (ring.LayerMinShare, ring.LayerLead));
+    }
+
+    [Theory]
+    [InlineData(0.0, null)]
+    [InlineData(1.5, null)]
+    [InlineData(null, 0.9)]
+    public void Out_of_range_layer_share_settings_are_refused(double? minShare, double? lead)
+    {
+        Assert.NotNull(TriggerValidation.Validate(Ring() with { LayerMinShare = minShare, LayerLead = lead }));
     }
 
     [Fact]

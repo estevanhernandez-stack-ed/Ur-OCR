@@ -40,6 +40,8 @@ public class RingImporterTests
     {
         var node = JsonSerializer.SerializeToNode(Measured(), TriggerJsonOptions.Default)!.AsObject();
         node.Remove("finders");
+        node.Remove("layerMinShare");
+        node.Remove("layerLead");
         var path = Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".measured.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, node.ToJsonString());
@@ -47,6 +49,8 @@ public class RingImporterTests
         var m = MeasuredRing.Load(path);
 
         Assert.Null(m.Finders);
+        Assert.Null(m.LayerMinShare);
+        Assert.Null(m.LayerLead);
         Assert.Null(m.Validate());
         Assert.Null(RingImporter.Build(m, Macros()).Ring.Finders);
     }
@@ -64,6 +68,17 @@ public class RingImporterTests
         Assert.Equal(new OutlineBox(50, 50, 60, 225), f.Outline);
         Assert.Equal(new OreColour("cyan crystal", new Rgb(60, 220, 230)), Assert.Single(f.Ore));
         Assert.Equal(40, f.OreToleranceRgb);
+    }
+
+    [Fact]
+    public void Layer_share_settings_import_onto_the_ring_and_default_to_none()
+    {
+        var set = RingImporter.Build(Measured() with { LayerMinShare = 0.06, LayerLead = 1.8 }, Macros()).Ring;
+        var unset = RingImporter.Build(Measured(), Macros()).Ring;
+
+        Assert.Equal((0.06, 1.8), (set.LayerMinShare, set.LayerLead));
+        Assert.Null(unset.LayerMinShare);
+        Assert.Null(unset.LayerLead);
     }
 
     [Fact]
@@ -214,6 +229,9 @@ public class RingImporterTests
         { "empty rock", Measured() with { Layers = new[] { new MeasuredLayer("navy", Array.Empty<Rgb>()) } } },
         { "schema 2", Measured() with { Schema = 2 } },
         { "no hold", Measured() with { RockCap = new MeasuredAction(0, "Go to Top") } },
+        { "layerMinShare 0", Measured() with { LayerMinShare = 0 } },
+        { "layerMinShare over 1", Measured() with { LayerMinShare = 1.5 } },
+        { "layerLead under 1", Measured() with { LayerLead = 0.9 } },
         { "duplicate macro", Measured() with { Spots = Measured().Spots
             .Select(s => s.Order == 1 ? s with { Macro = Measured().Spots[0].Macro } : s).ToList() } },
     };

@@ -31,7 +31,7 @@ public sealed record MeasuredRing(
     int ToleranceRgb, int MinLayerSpots, SampleBox Box,
     IReadOnlyList<MeasuredSpot> Spots, IReadOnlyList<Rgb> Ignore, IReadOnlyList<MeasuredLayer> Layers,
     MeasuredAction RockCap, MeasuredAction Camera, int SpotCooldownMs = 1000,
-    IReadOnlyList<MeasuredFinder>? Finders = null)
+    IReadOnlyList<MeasuredFinder>? Finders = null, double? LayerMinShare = null, double? LayerLead = null)
 {
     public const int CurrentSchema = 1;
 
@@ -77,7 +77,8 @@ public sealed record MeasuredRing(
         if (Ignore.Any(c => c is null || !ColorCriteria.InRange(c))) return "An ignore colour has a channel outside 0 to 255.";
         if (Layers is null || Layers.Count == 0) return "layers is empty: run ring-fit.ps1 -Write first.";
         var ring = new RingDefinition(RingId, Name,
-            Layers.Select(l => new LayerDefinition(l?.Name ?? "", l?.Rock ?? Array.Empty<Rgb>())).ToList(), MinLayerSpots);
+            Layers.Select(l => new LayerDefinition(l?.Name ?? "", l?.Rock ?? Array.Empty<Rgb>())).ToList(), MinLayerSpots,
+            LayerMinShare: LayerMinShare, LayerLead: LayerLead);
         if (TriggerValidation.Validate(ring) is { } ringProblem) return ringProblem;
         foreach (var (label, a) in new[] { ("rockCap", RockCap), ("camera", Camera) })
         {

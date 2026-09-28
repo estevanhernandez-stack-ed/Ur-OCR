@@ -21,7 +21,7 @@ public static class RingImporter
 
         var ring = new RingDefinition(m.RingId, m.Name,
             m.Layers.Select(l => new LayerDefinition(l.Name, l.Rock.ToList())).ToList(), m.MinLayerSpots,
-            m.Finders?.Select(f => f.ToSetup(m.RecordedClientW, m.RecordedClientH)).ToList());
+            m.Finders?.Select(f => f.ToSetup(m.RecordedClientW, m.RecordedClientH)).ToList(), m.LayerMinShare, m.LayerLead);
 
         // The capture region reaches far enough around the point to hold the whole box.
         var reach = Math.Max(1, new[] { -m.Box.OffsetX, -m.Box.OffsetY, m.Box.OffsetX + m.Box.W, m.Box.OffsetY + m.Box.H }.Max());

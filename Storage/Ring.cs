@@ -12,9 +12,13 @@ public sealed record LayerDefinition(string Name, IReadOnlyList<Rgb> Rock);
 /// triggers.json next to the triggers; spots point at it by <see cref="Id"/>.
 /// </summary>
 /// <remarks>Finders: the ore finder per layer (spec "Reach, measured, and the ore finder"), null on a
-/// ring imported without one; left out of triggers.json when null, so older files round-trip unchanged.</remarks>
+/// ring imported without one; left out of triggers.json when null, so older files round-trip unchanged.
+/// LayerMinShare and LayerLead: the pulse's layer read by colour share (spec "The layer is read by colour
+/// share, not 8 spots"), null for the defaults; left out of triggers.json when null, like Finders.</remarks>
 public sealed record RingDefinition(string Id, string Name, IReadOnlyList<LayerDefinition> Layers, int MinLayerSpots = 3,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<FinderSetup>? Finders = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<FinderSetup>? Finders = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? LayerMinShare = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? LayerLead = null);
 
 /// <summary>Marks a colour trigger as a spot of a ring. Order is the ring order: lower goes first.</summary>
 public sealed record RingSpot(string RingId, int Order);

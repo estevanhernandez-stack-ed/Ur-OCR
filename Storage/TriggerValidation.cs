@@ -52,6 +52,9 @@ public static class TriggerValidation
             if (layer.Rock.Any(c => c is null || !ColorCriteria.InRange(c)))
                 return $"Layer {layer.Name} has a rock colour outside 0 to 255.";
         }
+        if (ring.LayerMinShare is { } share && (share <= 0 || share > 1))
+            return $"layerMinShare must be above 0 and at most 1, not {share}.";
+        if (ring.LayerLead is { } lead && lead < 1) return $"layerLead must be at least 1, not {lead}.";
         return null;
     }
 
