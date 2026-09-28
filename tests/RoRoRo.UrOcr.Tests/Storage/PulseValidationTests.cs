@@ -86,6 +86,28 @@ public class PulseValidationTests
     public void Blank_toggle_macros_are_refused() =>
         Assert.Contains("Auto Mine off", Check(Pulse() with { Macros = Macros() with { AutoMineOn = " " } }));
 
+    private static RingDefinition RingWith(FinderSetup finder) => Ring() with { Finders = new[] { finder } };
+
+    [Fact]
+    public void FinderFor_picks_the_finder_of_the_aim_layer()
+    {
+        var ring = RingWith(FinderSetupTests.Valid());      // a finder for grey, layer 3
+
+        Assert.Equal("grey", PulseValidation.FinderFor(ring, 3)!.Layer);
+        Assert.Null(PulseValidation.FinderFor(ring, 2));
+        Assert.Null(PulseValidation.FinderFor(ring, 4));
+        Assert.Null(PulseValidation.FinderFor(Ring(), 3));
+    }
+
+    [Fact]
+    public void A_bad_finder_on_the_aim_layer_fails_the_pulse() =>
+        Assert.Contains("Ring mine8's ore finder for grey: pitch must be 4 to 599",
+            Check(Pulse(), null, RingWith(FinderSetupTests.Valid() with { Pitch = 3 })));
+
+    [Fact]
+    public void A_bad_finder_on_another_layer_leaves_the_pulse_valid() =>
+        Assert.Null(Check(Pulse(), null, RingWith(FinderSetupTests.Valid() with { Layer = "navy", Pitch = 3 })));
+
     [Fact]
     public void SpotsOf_takes_this_rings_colour_spots_in_ring_order_enabled_or_not()
     {

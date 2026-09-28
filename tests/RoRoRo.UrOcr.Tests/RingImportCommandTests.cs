@@ -21,10 +21,10 @@ public class RingImportCommandTests : IDisposable
     private string Report => Path.Combine(_dir, "ring-import.log");
     private string MacrosDir => Path.Combine(_dir, "macros");
 
-    private string WriteMeasured()
+    private string WriteMeasured(MeasuredRing? measured = null)
     {
         var path = Path.Combine(_dir, "mine8.measured.json");
-        File.WriteAllText(path, JsonSerializer.Serialize(RingImporterTests.Measured(), TriggerJsonOptions.Default));
+        File.WriteAllText(path, JsonSerializer.Serialize(measured ?? RingImporterTests.Measured(), TriggerJsonOptions.Default));
         return path;
     }
 
@@ -47,6 +47,19 @@ public class RingImportCommandTests : IDisposable
         Assert.Equal(0, code);
         Assert.Equal(10, new TriggerStore(Triggers).All.Count);
         Assert.Contains("imported ring mine8", File.ReadAllText(Report));
+    }
+
+    [Fact]
+    public void Reports_the_ore_finder_it_imported()
+    {
+        WriteMacros();
+
+        var code = Run(() => false,
+            WriteMeasured(RingImporterTests.Measured() with { Finders = new[] { RingImporterTests.Finder() } }));
+
+        Assert.Equal(0, code);
+        Assert.Contains("ore finder on grey (50 px blocks, 1 ore colour)", File.ReadAllText(Report));
+        Assert.NotNull(Assert.Single(new TriggerStore(Triggers).Rings).Finders);
     }
 
     [Fact]

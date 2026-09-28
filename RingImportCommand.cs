@@ -7,7 +7,7 @@ using RoRoRo.UrOcr.Storage;
 namespace RoRoRo.UrOcr;
 
 /// <summary>
-/// RoRoRo.UrOcr.exe --import-ring &lt;measured.json&gt; writes a measured ring (its layers,
+/// RoRoRo.UrOcr.exe --import-ring &lt;measured.json&gt; writes a measured ring (its layers, its ore finders,
 /// eight spot triggers, the rock cap and the camera rule) into triggers.json and exits
 /// without opening a window. Ur OCR must be closed: a running instance rewrites
 /// triggers.json from memory. The result goes to ring-import.log in the plugin data
@@ -51,6 +51,10 @@ internal static class RingImportCommand
                 lines.Add($"imported ring {result.Ring.Id} ({result.Ring.Name}): {result.Ring.Layers.Count} layers, " +
                           $"{result.Triggers.Count} triggers into {triggersPath}");
                 foreach (var t in result.Triggers) lines.Add($"  {t.Name} -> macro {t.MacroId}");
+                lines.Add(result.Ring.Finders is { Count: > 0 } finders
+                    ? "  ore finder on " + string.Join(", ", finders.Select(f =>
+                        $"{f.Layer} ({f.Pitch} px blocks, {f.Ore.Count} ore {(f.Ore.Count == 1 ? "colour" : "colours")})"))
+                    : "  no ore finder: pulses on this ring clear with the 8 Clear spot macros");
                 code = 0;
             }
             catch (Exception ex) when (ex is InvalidDataException or JsonException or IOException or UnauthorizedAccessException)

@@ -8,6 +8,18 @@ public sealed record MeasuredLayer(string Name, IReadOnlyList<Rgb> Rock);
 public sealed record MeasuredAction(int HoldForMs, string Macro, int CooldownMs = 5000);
 
 /// <summary>
+/// One layer's ore finder as the measured file holds it, in pixels of the file's recorded client
+/// size (spec "Reach, measured, and the ore finder"). A top-level "finders" list, not a field of
+/// "layers": ring-fit.ps1 -Write rewrites "layers" and keeps every other key.
+/// </summary>
+public sealed record MeasuredFinder(string Layer, int Pitch, int CenterX, int CenterY, OutlineBox Outline,
+    IReadOnlyList<OreColour> Ore, int OreToleranceRgb, int RadiusBlocks = FinderSetup.DefaultRadiusBlocks)
+{
+    public FinderSetup ToSetup(int clientW, int clientH) =>
+        new(Layer, clientW, clientH, Pitch, CenterX, CenterY, RadiusBlocks, Outline, Ore, OreToleranceRgb);
+}
+
+/// <summary>
 /// The measured-values file the live capture sweep writes (docs/reference/ore-stop/).
 /// Ur OCR imports it as a ring (RingImporter); Ur Task's macro generator reads the
 /// same file for the spot points. Coordinates are game-area pixels at the recorded
@@ -18,7 +30,8 @@ public sealed record MeasuredRing(
     int RecordedClientW, int RecordedClientH, int ScalePercent,
     int ToleranceRgb, int MinLayerSpots, SampleBox Box,
     IReadOnlyList<MeasuredSpot> Spots, IReadOnlyList<Rgb> Ignore, IReadOnlyList<MeasuredLayer> Layers,
-    MeasuredAction RockCap, MeasuredAction Camera, int SpotCooldownMs = 1000)
+    MeasuredAction RockCap, MeasuredAction Camera, int SpotCooldownMs = 1000,
+    IReadOnlyList<MeasuredFinder>? Finders = null)
 {
     public const int CurrentSchema = 1;
 
@@ -75,6 +88,19 @@ public sealed record MeasuredRing(
             if (string.IsNullOrWhiteSpace(a.Macro)) return $"{label} names no macro.";
         }
         if (SpotCooldownMs < 0) return "spotCooldownMs cannot be negative.";
+        if (Finders is not null)
+        {
+            var finderLayers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var f in Finders)
+            {
+                if (f is null) return "finders has an empty entry.";
+                if (!Layers.Any(l => l is not null && string.Equals(l.Name, f.Layer, StringComparison.OrdinalIgnoreCase)))
+                    return $"Finder layer {f.Layer} is not one of the layers.";
+                if (!finderLayers.Add(f.Layer)) return $"Two finders are for layer {f.Layer}.";
+                if (f.ToSetup(RecordedClientW, RecordedClientH).Validate() is { } finderProblem)
+                    return $"Finder {f.Layer}: {finderProblem}";
+            }
+        }
         return null;
     }
 }

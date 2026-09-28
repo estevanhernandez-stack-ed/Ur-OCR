@@ -18,6 +18,15 @@ public static class PulseValidation
             .OrderBy(t => t.Ring!.Order)
             .ToList();
 
+    /// <summary>The ring's ore finder for the 1-based aim layer, or null: no finders, none for that
+    /// layer, or a layer out of range. Null means the pulse clears with the eight Clear spot macros.</summary>
+    public static FinderSetup? FinderFor(RingDefinition ring, int aimLayer)
+    {
+        if (ring.Finders is null || aimLayer < 1 || aimLayer > ring.Layers.Count) return null;
+        var name = ring.Layers[aimLayer - 1].Name;
+        return ring.Finders.FirstOrDefault(f => f is not null && string.Equals(f.Layer, name, StringComparison.OrdinalIgnoreCase));
+    }
+
     public static string? Validate(PulseConfig p, IReadOnlyList<RingDefinition> rings, IReadOnlyList<Trigger> triggers)
     {
         if (p.AccountUserId <= 0) return "accountUserId must be the account's Roblox user id.";
@@ -37,6 +46,8 @@ public static class PulseValidation
             return $"settleMs must be 0 to {MaxSettleMs}, not {p.SettleMs}.";
         if (p.RockCapMinutes < 1 || p.RockCapMinutes > MaxRockCapMinutes)
             return $"rockCapMinutes must be 1 to {MaxRockCapMinutes}, not {p.RockCapMinutes}.";
+        if (FinderFor(ring, p.AimLayer) is { } finder && finder.Validate() is { } finderProblem)
+            return $"Ring {p.RingId}'s ore finder for {finder.Layer}: {finderProblem}";
 
         var orders = SpotsOf(p.RingId, triggers).Select(t => t.Ring!.Order).ToList();
         if (!orders.SequenceEqual(Enumerable.Range(0, SpotCount)))

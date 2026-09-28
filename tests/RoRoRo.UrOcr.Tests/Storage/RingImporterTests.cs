@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using RoRoRo.UrOcr.Storage;
 using Xunit;
 
@@ -29,6 +30,59 @@ public class RingImporterTests
             .Append(new UrTaskMacro("id-go-to-top", "Go to Top"))
             .Append(new UrTaskMacro("id-camera", "Camera top-down"))
             .ToList();
+
+    internal static MeasuredFinder Finder(string layer = "grey") => new(layer, Pitch: 50, CenterX: 390, CenterY: 340,
+        Outline: new OutlineBox(50, 50), Ore: new[] { new OreColour("cyan crystal", new Rgb(60, 220, 230)) },
+        OreToleranceRgb: 40);
+
+    [Fact]
+    public void A_measured_file_from_before_the_finder_loads_and_imports_with_none()
+    {
+        var node = JsonSerializer.SerializeToNode(Measured(), TriggerJsonOptions.Default)!.AsObject();
+        node.Remove("finders");
+        var path = Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".measured.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, node.ToJsonString());
+
+        var m = MeasuredRing.Load(path);
+
+        Assert.Null(m.Finders);
+        Assert.Null(m.Validate());
+        Assert.Null(RingImporter.Build(m, Macros()).Ring.Finders);
+    }
+
+    [Fact]
+    public void A_finder_imports_onto_the_ring_in_the_recorded_client_size()
+    {
+        var result = RingImporter.Build(Measured() with { Finders = new[] { Finder() } }, Macros());
+
+        var f = Assert.Single(result.Ring.Finders!);
+        Assert.Equal("grey", f.Layer);
+        Assert.Equal((800, 599), (f.ClientW, f.ClientH));
+        Assert.Equal((50, 390, 340), (f.Pitch, f.CenterX, f.CenterY));
+        Assert.Equal(FinderSetup.DefaultRadiusBlocks, f.RadiusBlocks);
+        Assert.Equal(new OutlineBox(50, 50, 60, 225), f.Outline);
+        Assert.Equal(new OreColour("cyan crystal", new Rgb(60, 220, 230)), Assert.Single(f.Ore));
+        Assert.Equal(40, f.OreToleranceRgb);
+    }
+
+    [Fact]
+    public void A_finder_for_a_layer_the_file_does_not_list_fails_the_import()
+    {
+        var ex = Assert.Throws<InvalidDataException>(() =>
+            RingImporter.Build(Measured() with { Finders = new[] { Finder("black") } }, Macros()));
+
+        Assert.Contains("Finder layer black is not one of the layers", ex.Message);
+    }
+
+    [Fact]
+    public void Two_finders_for_one_layer_fail_the_import()
+    {
+        var ex = Assert.Throws<InvalidDataException>(() =>
+            RingImporter.Build(Measured() with { Finders = new[] { Finder(), Finder() } }, Macros()));
+
+        Assert.Contains("Two finders are for layer grey", ex.Message);
+    }
 
     private static TriggerStore TempStore() =>
         new(Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".json"));

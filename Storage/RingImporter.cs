@@ -20,7 +20,8 @@ public static class RingImporter
         if (m.Validate() is { } problem) throw new InvalidDataException(problem);
 
         var ring = new RingDefinition(m.RingId, m.Name,
-            m.Layers.Select(l => new LayerDefinition(l.Name, l.Rock.ToList())).ToList(), m.MinLayerSpots);
+            m.Layers.Select(l => new LayerDefinition(l.Name, l.Rock.ToList())).ToList(), m.MinLayerSpots,
+            m.Finders?.Select(f => f.ToSetup(m.RecordedClientW, m.RecordedClientH)).ToList());
 
         // The capture region reaches far enough around the point to hold the whole box.
         var reach = Math.Max(1, new[] { -m.Box.OffsetX, -m.Box.OffsetY, m.Box.OffsetX + m.Box.W, m.Box.OffsetY + m.Box.H }.Max());

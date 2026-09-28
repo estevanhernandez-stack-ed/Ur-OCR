@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace RoRoRo.UrOcr.Storage;
 
 /// <summary>One layer of a mine: the colours its plain rock shows at a ring spot.</summary>
@@ -9,7 +11,10 @@ public sealed record LayerDefinition(string Name, IReadOnlyList<Rgb> Rock);
 /// of, provided at least <see cref="MinLayerSpots"/> spots agree. Stored in
 /// triggers.json next to the triggers; spots point at it by <see cref="Id"/>.
 /// </summary>
-public sealed record RingDefinition(string Id, string Name, IReadOnlyList<LayerDefinition> Layers, int MinLayerSpots = 3);
+/// <remarks>Finders: the ore finder per layer (spec "Reach, measured, and the ore finder"), null on a
+/// ring imported without one; left out of triggers.json when null, so older files round-trip unchanged.</remarks>
+public sealed record RingDefinition(string Id, string Name, IReadOnlyList<LayerDefinition> Layers, int MinLayerSpots = 3,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<FinderSetup>? Finders = null);
 
 /// <summary>Marks a colour trigger as a spot of a ring. Order is the ring order: lower goes first.</summary>
 public sealed record RingSpot(string RingId, int Order);

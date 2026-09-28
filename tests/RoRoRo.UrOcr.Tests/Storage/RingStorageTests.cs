@@ -52,6 +52,39 @@ public class RingStorageTests
     }
 
     [Fact]
+    public void A_ring_with_a_finder_survives_a_reload()
+    {
+        var path = TempFile();
+        new TriggerStore(path).UpsertRing(Ring() with { Finders = new[] { FinderSetupTests.Valid() } });
+
+        var f = Assert.Single(Assert.Single(new TriggerStore(path).Rings).Finders!);
+
+        Assert.Equal("grey", f.Layer);
+        Assert.Equal((800, 599, 50, 390, 340, 5), (f.ClientW, f.ClientH, f.Pitch, f.CenterX, f.CenterY, f.RadiusBlocks));
+        Assert.Equal(new OutlineBox(50, 50, 60, 225), f.Outline);
+        Assert.Equal(new OreColour("cyan crystal", new Rgb(60, 220, 230)), Assert.Single(f.Ore));
+        Assert.Equal(40, f.OreToleranceRgb);
+    }
+
+    [Fact]
+    public void A_ring_without_finders_writes_no_finders_key_and_an_old_file_loads()
+    {
+        var path = TempFile();
+        File.WriteAllText(path, """
+            { "schemaVersion": 2, "rings": [ { "id": "mine8", "name": "Mine #8", "minLayerSpots": 3,
+              "layers": [ { "name": "grey", "rock": [ { "r": 120, "g": 120, "b": 120 } ] } ] } ],
+              "triggers": [], "pulses": [] }
+            """);
+
+        var s = new TriggerStore(path);
+        var ring = Assert.Single(s.Rings);
+        Assert.Null(ring.Finders);
+
+        s.UpsertRing(ring);
+        Assert.DoesNotContain("finders", File.ReadAllText(path));
+    }
+
+    [Fact]
     public void Layer_trigger_and_hold_survive_a_reload()
     {
         var path = TempFile();
