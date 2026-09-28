@@ -77,6 +77,27 @@ public class TriggerStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_hand_edited_null_pulse_entry_is_dropped_on_load()
+    {
+        // "pulses": [null] would otherwise NRE inside the coordinator's tick and stop every
+        // trigger, not just this account's pulse. Pulses only ever arrive through the validating
+        // importer, so a null entry can only come from a hand edit.
+        File.WriteAllText(_tempPath, """
+            {
+              "schemaVersion": 2,
+              "rings": [],
+              "triggers": [],
+              "pulses": [ null, { "accountUserId": 42, "ringId": "mine8", "targetLayer": 3 } ]
+            }
+            """);
+
+        var s = new TriggerStore(_tempPath);
+
+        var pulse = Assert.Single(s.Pulses);
+        Assert.Equal(42, pulse.AccountUserId);
+    }
+
+    [Fact]
     public void Corrupted_file_backed_up_and_recovered_empty()
     {
         File.WriteAllText(_tempPath, "{not valid json");

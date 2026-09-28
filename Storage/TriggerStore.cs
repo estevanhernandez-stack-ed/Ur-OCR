@@ -129,6 +129,11 @@ public sealed class TriggerStore
                      ?? new TriggersFile();
             _state.Rings ??= new();   // "rings": null in a hand-edited file
             _state.Pulses ??= new();  // "pulses": null in a hand-edited file
+            // "pulses": [null] in a hand-edited file: pulses only ever arrive through the
+            // validating importer, so a null entry can only come from a hand edit. Left in,
+            // it would NRE inside the coordinator's tick and stop every trigger, not just this
+            // account's pulse.
+            _state.Pulses.RemoveAll(p => p is null);
             if (MigrateToV2()) WriteNow(); // sticky
         }
         catch (JsonException)
