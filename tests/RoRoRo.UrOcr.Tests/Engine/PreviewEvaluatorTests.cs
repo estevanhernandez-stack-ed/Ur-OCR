@@ -123,4 +123,16 @@ public class PreviewEvaluatorTests
 
         Assert.Null(pe.EvaluateTrigger(trig));
     }
+
+    [Fact]
+    public void EvaluateTrigger_RingSpot_ReturnsNull()
+    {
+        // A ring spot is judged against its ring's current layer, which the editor does not know.
+        var pe = new PreviewEvaluator(new FakeCapture(255, 17, 95), new ColorMatcher(), new FakeMetrics(), () => 0);
+        var trig = ScreenTrigger(new RegionRect(0, 0, 9, 9), new ColorCriteria(new Rgb(0, 0, 0), 10, ColorSamplingMode.SinglePixel,
+            Point: new PickPoint(4, 4), Box: new SampleBox(), NoneOf: new[] { new Rgb(135, 206, 235) }));
+        trig.Ring = new RingSpot("mine8", 0);
+
+        Assert.Null(pe.EvaluateTrigger(trig));
+    }
 }

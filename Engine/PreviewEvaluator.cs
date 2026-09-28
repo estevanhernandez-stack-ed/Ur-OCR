@@ -20,6 +20,8 @@ public sealed class PreviewEvaluator(
     public ColorMatchResult? EvaluateTrigger(Trigger trig)
     {
         if (trig.Mode != TriggerMode.Color || trig.Color is null) return null;
+        // A ring spot is judged against its ring's current layer, which the editor does not know.
+        if (trig.Ring is not null) return null;
         var anchorPid = trig.IsClientSpace ? anchorPidProvider() : 0;
         var region = TriggerRegionResolver.Resolve(trig, anchorPid, metrics);
         if (region is null || region.Width < 1 || region.Height < 1) return null;

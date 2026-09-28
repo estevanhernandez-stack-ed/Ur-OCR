@@ -58,7 +58,8 @@ public sealed class PluginRuntime
             onFirstFire: t => Toasts.Show(t.Action == Storage.TriggerAction.RunMacro
                 ? $"✓ \"{t.Name}\" ran a macro"
                 : $"✓ \"{t.Name}\" fired ({t.Keybind.Key})"),
-            macroClient: MacroClient)
+            macroClient: MacroClient,
+            diag: Diagnostics.DiagLog.Write)
         {
             TickRateHz = Settings.Current.TickRateHz,
         };

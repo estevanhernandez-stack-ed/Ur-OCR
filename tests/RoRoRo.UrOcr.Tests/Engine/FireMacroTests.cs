@@ -230,6 +230,37 @@ public class FireMacroTests
     }
 
     [Fact]
+    public async Task Busy_retry_fires_when_due_even_if_the_last_fire_cooldown_is_not()
+    {
+        var (c, color, store, macros, clock, log) = MakeTimed();
+        var trig = RunMacroTrigger("mine-e");   // CooldownMs = 100
+        store.Add(trig);
+        color.Result = true;
+
+        await c.TickOnceAsync(CancellationToken.None);   // a real fire: LastFiredAt set
+        Assert.Single(macros.Calls);
+
+        color.Result = false;
+        clock.Now = clock.Now.AddMilliseconds(150);
+        await c.TickOnceAsync(CancellationToken.None);   // edge ends
+
+        color.Result = true;
+        macros.Response = BusyResponse;
+        await c.TickOnceAsync(CancellationToken.None);   // new edge, Ur Task busy: retry at +100
+        Assert.Equal(2, macros.Calls.Count);
+
+        // The cooldown grows while the retry waits (an edit), so the last-fire
+        // cooldown is not ready when the retry falls due.
+        trig.CooldownMs = 1000;
+        macros.Response = AcceptedResponse;
+        clock.Now = clock.Now.AddMilliseconds(110);
+        await c.TickOnceAsync(CancellationToken.None);
+
+        Assert.Equal(3, macros.Calls.Count);             // the busy retry fires, not a cooldown skip
+        Assert.Equal(2, log.Snapshot().Count(e => e.Kind == ActivityKind.Fired));
+    }
+
+    [Fact]
     public async Task Other_refusals_spend_the_edge()
     {
         var (c, color, store, macros, clock, _) = MakeTimed();
