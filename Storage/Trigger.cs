@@ -34,12 +34,46 @@ public sealed record SampleBox(int OffsetX = -2, int OffsetY = -2, int W = 5, in
 /// reads the region centre, RegionAverage the whole region. <see cref="Other"/>
 /// is the opposite state's colour: matched means within tolerance of the
 /// target AND closer to it than to Other.
+/// <para>
+/// <see cref="NoneOf"/> turns the check around: when set, the trigger matches
+/// when the sample is more than <see cref="ToleranceRgb"/> from EVERY listed
+/// colour, and <see cref="TargetRgb"/> is ignored (any in-range value; the ring
+/// importer writes black). NoneOf cannot be combined with Other. An empty list
+/// is valid only on a ring spot, where the ring's current layer adds its rock.
+/// </para>
 /// </summary>
 public sealed record ColorCriteria(
     Rgb TargetRgb, int ToleranceRgb, ColorSamplingMode SamplingMode,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PickPoint? Point = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SampleBox? Box = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Rgb? Other = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Rgb? Other = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<Rgb>? NoneOf = null)
+{
+    /// <summary>The largest possible RGB distance, sqrt(3 x 255^2) = 441.67, rounded up.</summary>
+    public const int MaxTolerance = 442;
+
+    [JsonIgnore]
+    public bool IsNoneOf => NoneOf is not null;
+
+    /// <summary>Null when valid, else one sentence naming the problem.</summary>
+    public string? Validate(bool layerSupplied = false)
+    {
+        if (ToleranceRgb < 0 || ToleranceRgb > MaxTolerance)
+            return $"Tolerance must be 0 to {MaxTolerance}, not {ToleranceRgb}.";
+        if (TargetRgb is null || !InRange(TargetRgb)) return "The target colour has a channel outside 0 to 255.";
+        if (Other is not null && !InRange(Other)) return "The other colour has a channel outside 0 to 255.";
+        if (Box is not null && !Box.IsValid) return $"The sample box must be 1 to {SampleBox.MaxSide} pixels a side.";
+        if (NoneOf is null) return null;
+        if (Other is not null) return "A none-of check cannot also have an other colour.";
+        if (NoneOf.Count == 0 && !layerSupplied) return "A none-of check needs at least one colour.";
+        foreach (var c in NoneOf)
+            if (c is null || !InRange(c)) return "A none-of colour has a channel outside 0 to 255.";
+        return null;
+    }
+
+    public static bool InRange(Rgb c) =>
+        c.R is >= 0 and <= 255 && c.G is >= 0 and <= 255 && c.B is >= 0 and <= 255;
+}
 
 public sealed record KeyCombo(string Key, IReadOnlyList<string> Modifiers);
 

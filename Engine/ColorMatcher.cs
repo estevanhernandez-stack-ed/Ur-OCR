@@ -6,27 +6,54 @@ namespace RoRoRo.UrOcr.Engine;
 
 public sealed class ColorMatcher : IColorMatchEngine
 {
-    public ColorMatchResult Evaluate(Bitmap bmp, ColorCriteria c) => EvaluateCore(bmp, c, null);
+    public ColorMatchResult Evaluate(Bitmap bmp, ColorCriteria c) => Judge(Sample(bmp, c, null), c);
 
     public ColorMatchResult Evaluate(Bitmap bmp, ColorCriteria c, RegionRect recordedRegion)
-        => EvaluateCore(bmp, c, recordedRegion);
+        => Judge(Sample(bmp, c, recordedRegion), c);
 
-    private static ColorMatchResult EvaluateCore(Bitmap bmp, ColorCriteria c, RegionRect? recordedRegion)
+    public bool Matches(Bitmap bmp, ColorCriteria c) => Evaluate(bmp, c).Matched;
+
+    /// <summary>
+    /// The colour a check sees: the box around the pick point when the criteria
+    /// have one, else legacy SinglePixel (region centre) or RegionAverage (whole
+    /// region). recordedRegion scales the pick point for client-anchored captures.
+    /// </summary>
+    public static Rgb Sample(Bitmap bmp, ColorCriteria c, RegionRect? recordedRegion)
     {
-        Rgb sampled;
         if (c.Box is not null && c.Point is not null)
+            return AverageBox(bmp, ScalePoint(c.Point, bmp, recordedRegion), c.Box);
+
+        var (r, g, b) = c.SamplingMode switch
         {
-            sampled = AverageBox(bmp, ScalePoint(c.Point, bmp, recordedRegion), c.Box);
-        }
-        else
+            ColorSamplingMode.SinglePixel => SamplePixel(bmp, bmp.Width / 2, bmp.Height / 2),
+            ColorSamplingMode.RegionAverage => AverageRect(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height)),
+            _ => throw new ArgumentOutOfRangeException()
+        };
+        return new Rgb(r, g, b);
+    }
+
+    /// <summary>
+    /// Judges a sampled colour. Target check: within tolerance of the target (and
+    /// closer to it than to Other, when set). None-of check (NoneOf set): more than
+    /// tolerance from every listed colour and every colour in
+    /// <paramref name="extraNoneOf"/>; Distance is to the nearest of them and
+    /// Nearest names it. An empty combined list never matches: with nothing to
+    /// compare against, "none of them" means nothing. extraNoneOf is ignored by a
+    /// target check.
+    /// </summary>
+    public static ColorMatchResult Judge(Rgb sampled, ColorCriteria c, IReadOnlyList<Rgb>? extraNoneOf = null)
+    {
+        if (c.NoneOf is not null)
         {
-            var (r, g, b) = c.SamplingMode switch
+            var nearest = double.PositiveInfinity;
+            Rgb? nearestColour = null;
+            foreach (var listed in c.NoneOf.Concat(extraNoneOf ?? Array.Empty<Rgb>()))
             {
-                ColorSamplingMode.SinglePixel => SamplePixel(bmp, bmp.Width / 2, bmp.Height / 2),
-                ColorSamplingMode.RegionAverage => AverageRect(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height)),
-                _ => throw new ArgumentOutOfRangeException()
-            };
-            sampled = new Rgb(r, g, b);
+                var d = Distance(sampled, listed);
+                if (d < nearest) { nearest = d; nearestColour = listed; }
+            }
+            var noneNear = nearestColour is not null && nearest > c.ToleranceRgb;
+            return new ColorMatchResult(sampled, nearest, noneNear, Nearest: nearestColour);
         }
 
         var distance = Distance(sampled, c.TargetRgb);
@@ -34,8 +61,6 @@ public sealed class ColorMatcher : IColorMatchEngine
         var matched = distance <= c.ToleranceRgb && (toOther is null || distance < toOther.Value);
         return new ColorMatchResult(sampled, distance, matched, toOther);
     }
-
-    public bool Matches(Bitmap bmp, ColorCriteria c) => Evaluate(bmp, c).Matched;
 
     /// <summary>
     /// Average of <paramref name="box"/> around <paramref name="point"/>, clamped
@@ -52,7 +77,8 @@ public sealed class ColorMatcher : IColorMatchEngine
         return new Rgb(r, g, b);
     }
 
-    private static double Distance(Rgb a, Rgb b)
+    /// <summary>Euclidean RGB distance, 0 to about 441.7.</summary>
+    public static double Distance(Rgb a, Rgb b)
     {
         var dr = a.R - b.R;
         var dg = a.G - b.G;
