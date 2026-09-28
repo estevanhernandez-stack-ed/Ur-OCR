@@ -26,6 +26,7 @@ public sealed class PluginRuntime
     public Ipc.MacroRunClient MacroClient { get; } = new();
     public IWindowMetrics WindowMetrics { get; } = new WindowMetrics();
     public TriggerCoordinator? Coordinator { get; private set; }
+    public PulseRunner? Pulse { get; private set; }
     public Engine.PreviewEvaluator Preview { get; }
     public DisplayCheckResult LastDpiCheck { get; private set; } = DisplayCheckResult.FirstRun;
 
@@ -52,6 +53,13 @@ public sealed class PluginRuntime
         if (connected)
             _ = Accounts.RunAsync(Client, _cts.Token);
 
+        Pulse = new PulseRunner(
+            Triggers, new SpotReader(Capture, WindowMetrics), MacroClient, Foreground, Elevation, Accounts,
+            new SystemClock(), Activity, Diagnostics.DiagLog.Write)
+        {
+            TickRateHz = Settings.Current.TickRateHz,
+        };
+
         Coordinator = new TriggerCoordinator(
             Triggers, Capture, Color, Text, Foreground, Elevation, Keys, Activity,
             new SystemClock(), WindowMetrics,
@@ -59,11 +67,15 @@ public sealed class PluginRuntime
                 ? $"✓ \"{t.Name}\" ran a macro"
                 : $"✓ \"{t.Name}\" fired ({t.Keybind.Key})"),
             macroClient: MacroClient,
-            diag: Diagnostics.DiagLog.Write)
+            diag: Diagnostics.DiagLog.Write,
+            ringOwner: Pulse.OwnsRing)
         {
             TickRateHz = Settings.Current.TickRateHz,
         };
+        // F9 (pause all) and dry run hold the pulse too.
+        Pulse.Hold = () => Coordinator?.Paused == true || Coordinator?.DryRun == true;
         Coordinator.Start();
+        Pulse.Start();
         LastDpiCheck = Dpi.Check(GetCurrentFingerprint(), Triggers.All.Where(t => !t.IsClientSpace).Select(t => t.Region));
     }
 
@@ -71,6 +83,7 @@ public sealed class PluginRuntime
     {
         _cts?.Cancel();
         if (Coordinator is not null) await Coordinator.StopAsync();
+        if (Pulse is not null) await Pulse.StopAsync();
         Hotkey.Dispose();
         await Client.DisposeAsync();
     }

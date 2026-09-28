@@ -49,7 +49,8 @@ public sealed class TriggerCoordinator(
     IWindowMetrics metrics,
     Action<Trigger>? onFirstFire = null,
     IMacroRunClient? macroClient = null,
-    Action<string>? diag = null)
+    Action<string>? diag = null,
+    Func<int, string, bool>? ringOwner = null)
 {
     /// <summary>The refusal reason Ur Task returns while a sequence is running.</summary>
     public const string BusyReason = "busy";
@@ -152,6 +153,12 @@ public sealed class TriggerCoordinator(
                 if (!PassesGate(trig, gate.Value)) continue;
                 pid = gate.Value.Pid;
             }
+            if (OwnedByPulse(trig, pid))
+            {
+                // This account's pulse loop runs this ring; its spots and layer triggers stand down.
+                Disarm(trig.Id);
+                continue;
+            }
 
             Reading? reading;
             try
@@ -233,6 +240,19 @@ public sealed class TriggerCoordinator(
     }
 
     private static bool IsGated(Trigger trig) => trig.AccountAware || trig.IsClientSpace;
+
+    /// <summary>
+    /// A ring an enabled pulse runs for this tick's foreground account belongs to the pulse: its
+    /// spots, rock cap and camera rule stand down so two paths never drive one account. pid is 0
+    /// for an ungated trigger, which no pulse can own. With no owned spot read, the ring reads
+    /// "not visible" for that account, so its layer triggers never fire either.
+    /// </summary>
+    private bool OwnedByPulse(Trigger trig, int pid)
+    {
+        if (ringOwner is null || pid == 0) return false;
+        var ringId = trig.Ring?.RingId ?? trig.Layer?.RingId;
+        return ringId is not null && ringOwner(pid, ringId);
+    }
 
     private Gate ReadGate()
     {

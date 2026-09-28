@@ -5,7 +5,7 @@ using ROROROblox.PluginContract;
 
 namespace RoRoRo.UrOcr.PluginHost;
 
-public sealed class AccountRegistry
+public sealed class AccountRegistry : RoRoRo.UrOcr.Engine.IAccountLookup
 {
     private readonly ConcurrentDictionary<int, long> _pidToUserId = new();
 

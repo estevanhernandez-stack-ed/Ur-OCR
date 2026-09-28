@@ -426,4 +426,16 @@ public class PulseLoopTests
         Assert.Contains("targetLayer must be 1 to 3", rig.Loop.StopReason);
         Assert.Empty(rig.Macros.Runs);
     }
+
+    [Fact]
+    public async Task In_front_at_the_tick_but_not_right_before_the_macro_starts_nothing()
+    {
+        var rig = Build();
+
+        await rig.Loop.TickAsync(true, 7, CancellationToken.None, inFront: () => false);
+        Assert.Empty(rig.Macros.Runs);
+
+        await rig.Loop.TickAsync(true, 7, CancellationToken.None, inFront: () => true);
+        Assert.Equal("id-on", Assert.Single(rig.Macros.Runs).MacroId);
+    }
 }
