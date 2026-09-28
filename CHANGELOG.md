@@ -9,7 +9,6 @@
 - `RoRoRo.UrOcr.exe --import-pulse <pulse.json>` writes the pulse settings into triggers.json without opening a window, looking up Ur Task's macros by name. Import the ring first (`--import-ring`), and close Ur OCR first. The result is in `pulse-import.log`.
 - Ur OCR asks Ur Task how each macro ended (`GetPlayback`), so the pulse waits for a macro to finish before its next move.
 - Pulse decisions go to the activity panel and `ur-ocr.log`, each line starting `pulse <account id>:`.
-- If Ur Task loses track of a playback (it restarted, or the playback ran past 10 minutes), that playback is lost: rather than guess whether it pressed anything, the pulse stops instead of re-running it blind. In dry run, a pulse-owned ring shows nothing — its 0.5.0 triggers stand down and the pulse itself is held, same as pause-all.
 
 ### Changed
 
@@ -17,9 +16,10 @@
 
 ### Notes
 
-- The pulse acts only while its own account is the foreground alt, and never brings a window to the front. Pause all (F9) and dry run pause the pulse too.
-- If a macro stops at a colour check (a popup or captcha over the Auto Mine dot, or a Clear spot that cannot see the window), if you press Esc during one of its macros, or if Ur Task closes, that account's pulse stops and says why. Restart Ur OCR to start it again.
-- Needs Ur Task 0.11.0 or later (the "Clear spot" macros, the outline check and the `skipped` reason). An older Ur Task makes the pulse stop with `Unknown method 'GetPlayback'` or `No Ur Task macro is named "Clear spot N"`.
+- The pulse acts only while its own account is the foreground alt, and never brings a window to the front. Pause all (F9) and dry run pause the pulse too; held ticks still follow a macro already in flight, they just start nothing new. In dry run, a pulse-owned ring shows nothing: its 0.5.0 triggers stand down and the pulse itself is held, same as pause-all.
+- If Ur Task loses track of a playback (it restarted; a running playback is never dropped, and an ended one is kept 10 minutes), that playback is lost: rather than guess whether it pressed anything, the pulse stops instead of re-running it blind.
+- If a macro stops at a colour check (a popup or captcha over the Auto Mine dot, or a Clear spot that cannot see the window), if you press Esc during one of its macros, or if Ur Task closes, that account's pulse stops and says why, including whether Auto Mine may still be running. Restart Ur OCR to start it again.
+- Needs Ur Task 0.11.0 or later (the "Clear spot" macros, the outline check and the `skipped` reason). An older Ur Task makes a running pulse stop with `Unknown method 'GetPlayback'`; a missing "Clear spot N" macro is caught at `--import-pulse` time instead, and fails the import.
 - Downgrading to 0.5.0 keeps your triggers, but 0.5.0 drops the pulse settings the next time it saves.
 
 ## 0.5.0 — 2026-09-27

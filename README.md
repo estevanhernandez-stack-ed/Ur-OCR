@@ -54,7 +54,7 @@ Set it up per account in a pulse file (one entry per account; your Roblox user i
 
 The result is in `pulse-import.log`. An account with a pulse no longer uses the ring triggers above; every other account still does. The pulse only acts while its account's window is in front, and never switches windows for you.
 
-If Ur Task restarts (or a playback runs past 10 minutes) mid-macro, the pulse stops rather than guess whether it pressed anything; restart Ur OCR to start it again. Pause all (F9) and dry run hold the pulse too — in dry run, a pulse-owned ring shows nothing, since its ring triggers stand down and the pulse itself does not act.
+If Ur Task restarts mid-macro (a running playback is never dropped, and Ur Task keeps an ended one for 10 minutes), the pulse stops rather than guess whether it pressed anything; restart Ur OCR to start it again. Pause all (F9) and dry run hold the pulse too, though a macro already in flight keeps being followed: in dry run, a pulse-owned ring shows nothing, since its ring triggers stand down and the pulse itself does not act on anything new.
 
 ## Capabilities
 
