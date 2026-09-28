@@ -16,6 +16,7 @@
 
 ### Notes
 
+- Turn on Hide My Pets in the game's Settings before running a pulse. Pets sit over the character and the ring spots and read as blocks.
 - The pulse acts only while its own account is the foreground alt, and never brings a window to the front. Pause all (F9) and dry run pause the pulse too; held ticks still follow a macro already in flight, they just start nothing new. In dry run, a pulse-owned ring shows nothing: its 0.5.0 triggers stand down and the pulse itself is held, same as pause-all.
 - If Ur Task loses track of a playback (it restarted; a running playback is never dropped, and an ended one is kept 10 minutes), that playback is lost: rather than guess whether it pressed anything, the pulse stops instead of re-running it blind.
 - If a macro stops at a colour check (a popup or captcha over the Auto Mine dot, or a Clear spot that cannot see the window), if you press Esc during one of its macros, or if Ur Task closes, that account's pulse stops and says why, including whether Auto Mine may still be running. Restart Ur OCR to start it again.

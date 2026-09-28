@@ -34,7 +34,9 @@ The result is in `ring-import.log` next to `triggers.json`. Only the foreground 
 
 ## Ore stop pulse
 
-Watching the ring while Auto Mine rides misses ore: effects and popups sit over the spots, and plain rock comes in colours that look like ore. The pulse stops to look instead. Per account, it rides Auto Mine for a short burst, turns it off, waits a second, and reads the layer from the ring on the still frame. At your target layer it asks Ur Task to clear each ring spot, ore first. Ur Task only holds the mouse on a block the game outlines in white (one the pickaxe can reach and break), and skips the rest. When nothing is left to clear, it rides another burst.
+Watching the ring while Auto Mine rides misses ore: effects and popups sit over the spots, and plain rock comes in colours that look like ore. The pulse stops to look instead. Per account, it rides Auto Mine for a short burst, turns it off, waits a second, and reads the layer from the ring on the still frame. At your target layer it asks Ur Task to clear each ring spot, ore first. Ur Task only presses on a block the game outlines in white (one the pickaxe can reach and break), and skips the rest. The game hides the outline while the button is down, so Ur Task presses in one-second beats and looks again between them, until the outline is gone. There's no time limit on a block. When nothing is left to clear, it rides another burst.
+
+**Before you start, turn on Hide My Pets** (in the game's Settings). Pets sit over your character and the ring spots, and Ur OCR reads them as blocks.
 
 Set it up per account in a pulse file (one entry per account; your Roblox user id is on your profile URL):
 
