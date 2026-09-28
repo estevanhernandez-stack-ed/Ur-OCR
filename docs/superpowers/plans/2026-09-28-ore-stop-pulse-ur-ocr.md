@@ -3931,8 +3931,8 @@ This gates Ur Task 0.11.0's merge. With Auto Mine off, stand the main next to a 
 
 Then measure the reach threshold:
 1. Take the near-white counts from the "outline seen / no outline" log lines, with the pointer on a breakable block and on plain rock or out of reach.
-2. Set `ring.reach.minCount` (and w/h if needed) in `..ororo-ur-task\docseference\events\macros\space-mine-ore-stop\measured.json`, halfway between the two, and set `ring.reach.measuredOn`.
-3. Run its `generate.ps1` and its `OreStopExampleMacrosTests`, commit there, and copy the regenerated macros into `%LOCALAPPDATA%ƖLabs\RoRoRoUrTask\macros`. Restart Ur Task.
+2. Set `ring.reach.minCount` (and w/h if needed) in `..\rororo-ur-task\docs\reference\events\macros\space-mine-ore-stop\measured.json`, halfway between the two, and set `ring.reach.measuredOn`.
+3. Run its `generate.ps1` and its `OreStopExampleMacrosTests`, commit there, and copy the regenerated macros into `%LOCALAPPDATA%\626Labs\RoRoRoUrTask\macros`. Restart Ur Task.
 
 Record pass or fail for (a) and the chosen threshold in Step 11.
 
