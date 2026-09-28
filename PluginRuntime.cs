@@ -50,6 +50,9 @@ public sealed class PluginRuntime
     {
         _cts = new CancellationTokenSource();
         var connected = await Client.ConnectAsync(_cts.Token);
+        Diagnostics.DiagLog.Write(connected
+            ? "host: connected to RoRoRo"
+            : $"host: NOT connected to RoRoRo ({Client.LastConnectError ?? "no reason given"}); pulse and triggers cannot see which account is in front");
         if (connected)
             _ = Accounts.RunAsync(Client, _cts.Token);
 

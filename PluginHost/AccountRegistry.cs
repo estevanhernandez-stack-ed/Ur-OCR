@@ -27,6 +27,23 @@ public sealed class AccountRegistry : RoRoRo.UrOcr.Engine.IAccountLookup
         var exitedTask = ConsumeAsync(client.Host.SubscribeAccountExited(
             new SubscriptionRequest(), cancellationToken: ct), ct, evt => Remove((int)evt.ProcessId));
 
+        // The streams only carry changes from now on. Accounts already running when Ur OCR
+        // connected (Ur OCR restarted, or started after the alts) come from this snapshot, taken
+        // after subscribing so a launch in between is not lost. Without it the pulse and every
+        // trigger see no alt in front. Same seed as Ur Task's PluginClient.
+        try
+        {
+            var running = await client.Host.GetRunningAccountsAsync(
+                new ROROROblox.PluginContract.Empty(), cancellationToken: ct);
+            foreach (var a in running.Accounts)
+                Add((int)a.ProcessId, a.RobloxUserId);
+            Diagnostics.DiagLog.Write($"host: {running.Accounts.Count} account(s) already running");
+        }
+        catch (Grpc.Core.RpcException ex)
+        {
+            Diagnostics.DiagLog.Write($"host: could not list running accounts ({ex.StatusCode}); only accounts launched from now on are known");
+        }
+
         await Task.WhenAll(launchedTask, exitedTask);
     }
 
