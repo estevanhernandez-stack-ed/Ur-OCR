@@ -9,8 +9,10 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// <summary>
 /// One account's ore stop pulse (spec 2026-09-28). Riding: Auto Mine on for BurstMs. Pausing: Auto
 /// Mine off, then SettleMs for the effects to clear. Reading: vote the layer on that calm frame.
-/// Above the aim layer: ride again. Past it: Go to Top. At it: Clearing, one Clear spot per ring
-/// spot, ore first; Ur Task skips a spot with no outline. A pass that cleared something settles and
+/// Above the aim layer: ride again. Past it: Go to Top.
+/// At it: Clearing. With an ore finder for the aim layer, one ClearAt call carries the finder's points
+/// (ore patches, then a block grid) from a calm frame; without one, one Clear spot per ring spot,
+/// ore first. Ur Task skips a point or spot with no outline. A pass that cleared something settles and
 /// reads again; a pass that cleared nothing rides a burst (Bursting) first. RockCapMinutes on one
 /// aim layer with nothing cleared (time behind or paused not counted): Go to Top. Each tick does
 /// everything it can and returns at the first wait. Nothing starts unless the account is in front,
@@ -28,6 +30,10 @@ public sealed class PulseLoop
     private readonly IClock _clock;
     private readonly Action<string> _log;
     private readonly MacroCall _call;
+    private readonly FinderSetup? _finder;            // the aim layer's ore finder; null clears the 8 spots
+    private IReadOnlyList<FinderTarget>? _targets;     // this pass's ClearAt points; null on a Clear spot pass
+    private bool _clearAtEnded;                        // this pass's ClearAt has ended
+    private bool _frameLogged;
 
     private bool _macroDone;               // this state's macro has ended
     private DateTimeOffset? _until;        // this state's timer: set when its macro ends
@@ -48,6 +54,7 @@ public sealed class PulseLoop
         _log = log;
         _ring = TriggerValidation.Find(rings, config.RingId);
         _spots = PulseValidation.SpotsOf(config.RingId, triggers);
+        _finder = _ring is null ? null : PulseValidation.FinderFor(_ring, config.AimLayer);
         _call = new MacroCall(macros, config.AccountUserId.ToString(CultureInfo.InvariantCulture), clock, log);
 
         if (PulseValidation.Validate(config, rings, triggers) is { } problem)
@@ -56,7 +63,10 @@ public sealed class PulseLoop
             return;
         }
         var mode = config.Mode == PulseMode.OneAbove ? "one above" : "top";
-        _log($"started: ring {config.RingId}, target layer {config.TargetLayer} ({mode}), clearing on {_ring!.Layers[config.AimLayer - 1].Name}");
+        var how = _finder is null
+            ? "the 8 Clear spot macros"
+            : $"the ore finder ({_finder.Pitch} px blocks, radius {_finder.RadiusBlocks})";
+        _log($"started: ring {config.RingId}, target layer {config.TargetLayer} ({mode}), clearing on {_ring!.Layers[config.AimLayer - 1].Name} with {how}");
     }
 
     public long AccountUserId => _config.AccountUserId;
@@ -177,18 +187,52 @@ public sealed class PulseLoop
             return Enter(PulseState.GoingToTop);
         }
 
-        var order = PulseOrder.Rank(samples, ring.Layers[number - 1].Rock);
         _queue.Clear();
-        foreach (var o in order) _queue.Enqueue(o);
         _spot = -1;
         _cleared.Clear();
         _skipped.Clear();
+        _clearAtEnded = false;
+
+        if (_finder is { } finder)
+        {
+            var frame = _reader.ReadFrame(pid);
+            if (frame is null)
+            {
+                if (!_frameLogged) _log("could not capture the window for the ore finder (hidden or gone); waiting");
+                _frameLogged = true;
+                return false;
+            }
+            _frameLogged = false;
+            var targets = TargetFinder.Find(frame, finder);
+            if (targets.Count == 0)
+            {
+                _log($"{seen} is the target, but the ore finder has no point inside the window: riding a burst");
+                return Enter(PulseState.Bursting);
+            }
+            _targets = targets;
+            var ore = targets.Count(t => t.Ore);
+            _log($"{seen} is the target: clearing at {targets.Count} points ({ore} ore, {targets.Count - ore} stone)");
+            return Enter(PulseState.Clearing);
+        }
+
+        _targets = null;
+        var order = PulseOrder.Rank(samples, ring.Layers[number - 1].Rock);
+        foreach (var o in order) _queue.Enqueue(o);
         _log($"{seen} is the target: clearing {string.Join(" ", order.Select(SpotName))}");
         return Enter(PulseState.Clearing);
     }
 
     private bool ClearNext()
     {
+        if (_targets is { } targets)
+        {
+            if (_clearAtEnded) return EndPass();
+            var f = _finder!;
+            _call.BeginClearAt(new ClearAtClient(f.ClientW, f.ClientH),
+                targets.Select(t => new ClearAtPoint(t.X, t.Y, t.Label)).ToList(),
+                new ClearAtOutline(f.Outline.W, f.Outline.H, f.Outline.MinCount, f.Outline.WhiteMin));
+            return true;
+        }
         if (_spot < 0)
         {
             if (_queue.Count == 0) return EndPass();
@@ -199,6 +243,16 @@ public sealed class PulseLoop
 
     private bool EndPass()
     {
+        if (_targets is { } targets)
+        {
+            if (_cleared.Count > 0)
+            {
+                _log($"cleared at the ore finder's points ({targets.Count} tried): reading again");
+                return Enter(PulseState.Pausing, macroDone: true);   // Auto Mine is still off: just settle
+            }
+            _log($"nothing in reach to clear (all {targets.Count} points skipped): riding a burst");
+            return Enter(PulseState.Bursting);
+        }
         if (_cleared.Count > 0)
         {
             var skipped = _skipped.Count > 0 ? $"; nothing to clear at {string.Join(" ", _skipped)}" : "";
@@ -226,7 +280,9 @@ public sealed class PulseLoop
 
         if (State == PulseState.Clearing)
         {
-            var name = SpotName(_spot);
+            // A ClearAt is one playback for the whole pass: finished counts as cleared progress (rock
+            // cap, no burst) exactly as a Clear spot does; finished + skipped means nothing cleared.
+            var name = _targets is null ? SpotName(_spot) : r.Label;
             switch (r.Status)
             {
                 case CallStatus.Done:
@@ -243,6 +299,7 @@ public sealed class PulseLoop
                     break;
             }
             _spot = -1;
+            _clearAtEnded = _targets is not null;
             return;
         }
 
