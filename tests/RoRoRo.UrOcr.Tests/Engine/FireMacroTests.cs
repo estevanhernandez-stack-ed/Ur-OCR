@@ -139,7 +139,7 @@ public class FireMacroTests
     public async Task RefusedMacro_response_logs_Fired_with_refused_detail()
     {
         var (c, color, keys, log, store, macroClient) = Make(dryRun: false);
-        macroClient.Response = new RunMacroResponse(false, null, false, "busy", "Ur Task is busy.");
+        macroClient.Response = new RunMacroResponse(false, null, false, "unknown-macro", "No macro with id 'macro-refused'.");
         var trig = RunMacroTrigger("macro-refused");
         store.Add(trig);
         color.Result = true;
@@ -150,5 +150,97 @@ public class FireMacroTests
         Assert.Equal(0, keys.Pressed);
         var entry = Assert.Single(log.Snapshot(), e => e.Kind == ActivityKind.Fired);
         Assert.Contains("refused", entry.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static readonly RunMacroResponse BusyResponse = new(false, null, false, "busy", "A sequence is already running.");
+    private static readonly RunMacroResponse AcceptedResponse = new(true, "pb-1", false, null, null);
+
+    private (TriggerCoordinator C, FakeColor Color, TriggerStore Store, FakeMacroClient Macros, FakeClock Clock, ActivityLog Log) MakeTimed()
+    {
+        var store = new TriggerStore(Path.Combine(Path.GetTempPath(), $"fm-{Guid.NewGuid()}.json"));
+        var clock = new FakeClock { Now = DateTimeOffset.UnixEpoch };
+        var color = new FakeColor();
+        var log = new ActivityLog();
+        var macros = new FakeMacroClient();
+        var c = new TriggerCoordinator(store, new FakeCapture(), color, new FakeText(), new FakeFg(), new FakeElev(),
+            new FakeKeys(), log, clock, new FakeMetrics(), onFirstFire: null, macroClient: macros);
+        return (c, color, store, macros, clock, log);
+    }
+
+    [Fact]
+    public async Task Busy_refusal_keeps_the_trigger_armed_and_retries_after_cooldown()
+    {
+        var (c, color, store, macros, clock, log) = MakeTimed();
+        store.Add(RunMacroTrigger("mine-e"));   // CooldownMs = 100
+        color.Result = true;
+        macros.Response = BusyResponse;
+
+        await c.TickOnceAsync(CancellationToken.None);
+        Assert.Single(macros.Calls);
+        Assert.Contains(log.Snapshot(), e => e.Kind == ActivityKind.Busy);
+
+        clock.Now = clock.Now.AddMilliseconds(50);
+        await c.TickOnceAsync(CancellationToken.None);
+        Assert.Single(macros.Calls);                     // waiting out the cooldown
+
+        macros.Response = AcceptedResponse;
+        clock.Now = clock.Now.AddMilliseconds(60);       // 110 ms after the refusal
+        await c.TickOnceAsync(CancellationToken.None);
+        Assert.Equal(2, macros.Calls.Count);
+        Assert.Contains(log.Snapshot(), e => e.Kind == ActivityKind.Fired);
+
+        clock.Now = clock.Now.AddMilliseconds(500);
+        await c.TickOnceAsync(CancellationToken.None);
+        Assert.Equal(2, macros.Calls.Count);             // accepted: the edge is spent
+    }
+
+    [Fact]
+    public async Task Busy_refusal_is_not_counted_as_a_fire()
+    {
+        var (c, color, store, macros, _, _) = MakeTimed();
+        store.Add(RunMacroTrigger());
+        color.Result = true;
+        macros.Response = BusyResponse;
+
+        await c.TickOnceAsync(CancellationToken.None);
+
+        var t = Assert.Single(store.All);
+        Assert.Equal(0, t.HitCount);
+        Assert.Null(t.LastFiredAt);
+    }
+
+    [Fact]
+    public async Task Busy_retry_lapses_when_the_spot_stops_matching()
+    {
+        var (c, color, store, macros, clock, _) = MakeTimed();
+        store.Add(RunMacroTrigger());
+        color.Result = true;
+        macros.Response = BusyResponse;
+        await c.TickOnceAsync(CancellationToken.None);
+
+        color.Result = false;
+        clock.Now = clock.Now.AddMilliseconds(200);
+        await c.TickOnceAsync(CancellationToken.None);
+        Assert.Single(macros.Calls);                     // no retry while it does not match
+
+        macros.Response = AcceptedResponse;
+        color.Result = true;
+        await c.TickOnceAsync(CancellationToken.None);
+        Assert.Equal(2, macros.Calls.Count);             // a fresh edge fires at once
+    }
+
+    [Fact]
+    public async Task Other_refusals_spend_the_edge()
+    {
+        var (c, color, store, macros, clock, _) = MakeTimed();
+        store.Add(RunMacroTrigger());
+        color.Result = true;
+        macros.Response = new RunMacroResponse(false, null, false, "ur-task-not-running", "Ur Task is not running.");
+
+        await c.TickOnceAsync(CancellationToken.None);
+        clock.Now = clock.Now.AddMilliseconds(500);
+        await c.TickOnceAsync(CancellationToken.None);
+
+        Assert.Single(macros.Calls);
     }
 }

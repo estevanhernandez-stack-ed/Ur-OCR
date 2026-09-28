@@ -46,7 +46,12 @@ public sealed class TriggerCoordinator(
     public bool Paused { get; set; }
     public bool DryRun { get; set; }
 
+    /// <summary>The refusal reason Ur Task returns while a sequence is running.</summary>
+    public const string BusyReason = "busy";
+
     private readonly Dictionary<Guid, bool> _wasMatched = new();
+    // Trigger id -> earliest retry after a busy refusal. A trigger in here stays armed.
+    private readonly Dictionary<Guid, DateTimeOffset> _retryAt = new();
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
@@ -149,7 +154,15 @@ public sealed class TriggerCoordinator(
             var cooldownReady = trig.LastFiredAt is null
                 || (now - trig.LastFiredAt.Value).TotalMilliseconds >= trig.CooldownMs;
 
-            if (matched && !was && cooldownReady)
+            var keepArmed = false;
+            if (matched && !was && _retryAt.TryGetValue(trig.Id, out var retryAt) && now < retryAt)
+            {
+                // Ur Task was busy: stay armed and try again once the cooldown has passed.
+                keepArmed = true;
+                log.Record(trig.Id, trig.Name, ActivityKind.SkippedCooldown,
+                    $"{(retryAt - now).TotalMilliseconds:0}ms (Ur Task was busy)");
+            }
+            else if (matched && !was && cooldownReady)
             {
                 if (DryRun)
                 {
@@ -159,10 +172,21 @@ public sealed class TriggerCoordinator(
                 else if (trig.Action == TriggerAction.RunMacro && macroClient is not null && trig.MacroId is not null)
                 {
                     var resp = await macroClient.RunAsync(trig.MacroId, trig.MacroTargets, ct).ConfigureAwait(false);
-                    store.MarkFired(trig.Id, now);
-                    log.Record(trig.Id, trig.Name, ActivityKind.Fired,
-                        resp.Ok ? $"macro {trig.MacroId}" : $"macro refused: {resp.Reason}");
-                    if (!trig.FirstFireConfirmed) onFirstFire?.Invoke(trig);
+                    if (!resp.Ok && string.Equals(resp.Reason, BusyReason, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Not a fire: nothing ran. Stay armed, retry after the cooldown.
+                        keepArmed = true;
+                        _retryAt[trig.Id] = now.AddMilliseconds(trig.CooldownMs);
+                        log.Record(trig.Id, trig.Name, ActivityKind.Busy, $"Ur Task busy, retry in {trig.CooldownMs}ms");
+                    }
+                    else
+                    {
+                        _retryAt.Remove(trig.Id);
+                        store.MarkFired(trig.Id, now);
+                        log.Record(trig.Id, trig.Name, ActivityKind.Fired,
+                            resp.Ok ? $"macro {trig.MacroId}" : $"macro refused: {resp.Reason}");
+                        if (!trig.FirstFireConfirmed) onFirstFire?.Invoke(trig);
+                    }
                 }
                 else
                 {
@@ -175,6 +199,7 @@ public sealed class TriggerCoordinator(
             }
             else if (!matched)
             {
+                _retryAt.Remove(trig.Id);
                 log.Record(trig.Id, trig.Name, ActivityKind.NoMatch,
                     detail.Length > 0 ? detail : null);
             }
@@ -184,7 +209,7 @@ public sealed class TriggerCoordinator(
                 log.Record(trig.Id, trig.Name, ActivityKind.SkippedCooldown, $"{remain:0}ms");
             }
 
-            _wasMatched[trig.Id] = matched;
+            _wasMatched[trig.Id] = matched && !keepArmed;
         }
     }
 }

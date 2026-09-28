@@ -1,6 +1,6 @@
 namespace RoRoRo.UrOcr.Engine;
 
-public enum ActivityKind { Fired, WouldFire, NoMatch, SkippedCooldown, SkippedNotAlt, BlockedElevated, Error }
+public enum ActivityKind { Fired, WouldFire, NoMatch, SkippedCooldown, SkippedNotAlt, BlockedElevated, Error, Busy }
 
 public sealed record ActivityEntry(DateTimeOffset At, Guid TriggerId, string TriggerName, ActivityKind Kind, string? Detail);
 
