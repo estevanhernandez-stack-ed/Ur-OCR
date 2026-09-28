@@ -15,4 +15,15 @@ internal static class Frames
             for (var xx = x; xx < x + bw; xx++)
                 px[yy * w + xx] = p;
     }
+
+    /// <summary>A block grid: <paramref name="block"/> everywhere, with <paramref name="lineWidth"/> px
+    /// lines of <paramref name="line"/> every <paramref name="spacingX"/> px across and every
+    /// <paramref name="spacingY"/> px down, the first at <paramref name="offset"/>.</summary>
+    public static int[] Grid(int w, int h, int spacingX, int spacingY, Rgb block, Rgb line, int lineWidth = 2, int offset = 7)
+    {
+        var px = Solid(w, h, block);
+        for (var x = offset; x < w; x += spacingX) Fill(px, w, x, 0, Math.Min(lineWidth, w - x), h, line);
+        for (var y = offset; y < h; y += spacingY) Fill(px, w, 0, y, w, Math.Min(lineWidth, h - y), line);
+        return px;
+    }
 }
