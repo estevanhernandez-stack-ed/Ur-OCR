@@ -12,10 +12,15 @@ public class FinderSetupTests
     [Fact]
     public void A_measured_finder_is_valid() => Assert.Null(Valid().Validate());
 
+    /// <summary>A block in a one-block shaft is about 170 px; Ur Task takes a box up to 240.</summary>
+    [Fact]
+    public void A_shaft_sized_box_is_valid() =>
+        Assert.Null((Valid() with { Outline = new OutlineBox(240, 240) }).Validate());
+
     [Theory]
     [InlineData("pitch", "pitch must be 4 to 599")]
     [InlineData("radius", "radiusBlocks must be 1 to 20")]
-    [InlineData("bigBox", "outline must be 1 to 120 pixels a side")]
+    [InlineData("bigBox", "outline must be 1 to 240 pixels a side")]
     [InlineData("minCount", "outline.minCount must be 1 to 2500")]
     [InlineData("whiteMin", "outline.whiteMin must be 1 to 255")]
     [InlineData("centre", "must sit inside the 800x599 game area")]
@@ -29,7 +34,7 @@ public class FinderSetupTests
         {
             "pitch" => v with { Pitch = 3 },
             "radius" => v with { RadiusBlocks = 0 },
-            "bigBox" => v with { Outline = v.Outline with { W = 121 } },
+            "bigBox" => v with { Outline = v.Outline with { W = 241 } },
             "minCount" => v with { Outline = v.Outline with { MinCount = 2501 } },
             "whiteMin" => v with { Outline = v.Outline with { WhiteMin = 0 } },
             "centre" => v with { CenterX = 10 },

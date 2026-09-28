@@ -71,7 +71,7 @@ The finder goes in the measured file, one entry per layer you clear on, in pixel
         "oreToleranceRgb": 40 }
     ]
 
-`layer` names one of the file's `layers`. `pitch` is one block in pixels at that layer, `centerX` and `centerY` the middle of your character, `radiusBlocks` 5 when left out. `outline` is Ur Task's outline check: at most 120 pixels a side, `whiteMin` 1 to 255, `minCount` no more than the box's pixels. A patch within `oreToleranceRgb` of an `ore` colour is ore; `"ore": []` clears the grid alone. `ring-fit.ps1 -Write` keeps `finders` when it rewrites `layers`. Import the ring again after adding one; `ring-import.log` names each finder, or says there is none.
+`layer` names one of the file's `layers`. `pitch` is one block in pixels at that layer, `centerX` and `centerY` the middle of your character, `radiusBlocks` 5 when left out. `outline` is Ur Task's outline check: at most 240 pixels a side, `whiteMin` 1 to 255, `minCount` no more than the box's pixels. A patch within `oreToleranceRgb` of an `ore` colour is ore; `"ore": []` clears the grid alone. `ring-fit.ps1 -Write` keeps `finders` when it rewrites `layers`. Import the ring again after adding one; `ring-import.log` names each finder, or says there is none.
 
 A measured file without `finders`, or an account whose clearing layer has none, clears with the eight "Clear spot" macros as before. The ore finder needs Ur Task 0.11.0 or later; an older one makes the pulse stop with `Unknown method 'ClearAt'`.
 

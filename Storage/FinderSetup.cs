@@ -21,8 +21,9 @@ public sealed record FinderSetup(string Layer, int ClientW, int ClientH, int Pit
     /// <summary>Samples are taken every Pitch / 4 pixels: 4 is the smallest pitch with a 1 px step.</summary>
     public const int MinPitch = 4;
     public const int MaxRadiusBlocks = 20;
-    /// <summary>Ur Task refuses a larger outline box (its OutlineCheck.MaxSide).</summary>
-    public const int MaxOutlineSide = 120;
+    /// <summary>Ur Task refuses a larger outline box (its OutlineCheck.MaxSide, 240 so a block in a
+    /// one-block shaft, about 170 px, still fits).</summary>
+    public const int MaxOutlineSide = 240;
 
     /// <summary>Null when ClearAt can use it, else one sentence naming the first problem. Covers every
     /// refusal Ur Task makes on the outline, so a stored finder never sends one.</summary>
