@@ -44,7 +44,13 @@ $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(255, 255,
 
 function Draw-Crop($g, $bmp, [int]$px, [int]$py, [int]$col, [int]$row, [string]$label) {
     $half = [int]($Crop / 2)
-    $src = New-Object System.Drawing.Rectangle ($px - $half), ($py - $half), $Crop, $Crop
+    # Clamped the same way as Average-Box, so a spot near the frame edge crops the visible part of
+    # the bitmap instead of handing DrawImage a source rectangle that falls outside it.
+    $sx0 = [math]::Min([math]::Max($px - $half, 0), $bmp.Width - 1)
+    $sy0 = [math]::Min([math]::Max($py - $half, 0), $bmp.Height - 1)
+    $sx1 = [math]::Min([math]::Max($px - $half + $Crop, $sx0 + 1), $bmp.Width)
+    $sy1 = [math]::Min([math]::Max($py - $half + $Crop, $sy0 + 1), $bmp.Height)
+    $src = New-Object System.Drawing.Rectangle $sx0, $sy0, ($sx1 - $sx0), ($sy1 - $sy0)
     $x = $col * $tile; $y = $row * ($tile + $strip)
     $dst = New-Object System.Drawing.Rectangle $x, $y, $tile, $tile
     $g.DrawImage($bmp, $dst, $src, [System.Drawing.GraphicsUnit]::Pixel)

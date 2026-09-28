@@ -17,6 +17,11 @@
 #   WRONG LAYER  a frame whose votes pick another layer, or no layer
 # With -Write it puts layers, ignore and toleranceRgb into the measured-values JSON.
 #
+# Zero labelled ore samples means MISSED ORE can never fire, so the fit is untested on the one
+# thing this whole exercise exists to catch: the verdict says "fit untested for ore" (never "fit
+# clean") and the script exits non-zero, alongside a WARNING line and the per-kind sample counts
+# folded into the verdict.
+#
 #   pwsh -File tools\ring-fit.ps1 -Samples C:\sweep\samples.csv -Labels C:\sweep\labels.csv -Measured C:\sweep\mine8.measured.json
 #   ... -Tolerance 25 -Write
 param(
@@ -100,6 +105,11 @@ foreach ($name in $layerNames) {
     if ($rockIn.Count -eq 0) { "WARNING: layer $name has no rock samples; Ur OCR will reject it" }
 }
 
+$rockCount = @($rows | Where-Object { $_.kind -eq 'rock' }).Count
+$oreCount = @($rows | Where-Object { $_.kind -eq 'ore' }).Count
+$ignoreCount = $ignoreIn.Count
+if ($oreCount -eq 0) { "WARNING: 0 ore samples labelled; MISSED ORE not tested" }
+
 $missed = 0; $falseStops = 0; $wrong = 0
 foreach ($r in $rows) {
     $d = [math]::Min([RingFit]::Nearest($r.c, $fitted[$r.layer]), [RingFit]::Nearest($r.c, $ignore))
@@ -126,8 +136,8 @@ foreach ($group in ($rows | Group-Object frame)) {
     }
 }
 
-$verdict = if ($missed + $falseStops + $wrong -eq 0) { "fit clean" } else { "fit has problems" }
-"{0}: {1} missed ore, {2} false stops, {3} wrong layers (tolerance {4}, {5} samples)" -f $verdict, $missed, $falseStops, $wrong, $Tolerance, $rows.Count
+$verdict = if ($oreCount -eq 0) { "fit untested for ore" } elseif ($missed + $falseStops + $wrong -eq 0) { "fit clean" } else { "fit has problems" }
+"{0}: {1} missed ore, {2} false stops, {3} wrong layers (tolerance {4}, {5} samples: {6} rock, {7} ore, {8} ignore)" -f $verdict, $missed, $falseStops, $wrong, $Tolerance, $rows.Count, $rockCount, $oreCount, $ignoreCount
 
 if ($Write) {
     $toJson = { param($list) @(foreach ($c in $list) { [pscustomobject]@{ r = $c[0]; g = $c[1]; b = $c[2] } }) }
@@ -138,3 +148,5 @@ if ($Write) {
     $m | ConvertTo-Json -Depth 8 | Set-Content -Path $Measured -Encoding utf8
     "wrote $($layerNames.Count) layers and $($ignore.Count) ignore colours to $Measured"
 }
+
+if ($oreCount -eq 0) { exit 1 }
