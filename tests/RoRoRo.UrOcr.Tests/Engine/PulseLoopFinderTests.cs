@@ -79,9 +79,9 @@ public class PulseLoopFinderTests
         await FirstRead(rig);
 
         var req = Assert.Single(rig.Macros.ClearAts);
-        Assert.Equal(new ClearAtPoint(492, 336, "ore 1"), req.Points[0]);
+        Assert.Equal(new ClearAtPoint(490, 340, "ore 1"), req.Points[0]);   // the grid point on the ore beats its centre (492, 336)
         Assert.Equal(13, req.Points.Count);
-        Assert.DoesNotContain(req.Points, p => (p.X, p.Y) == (490, 340));    // the grid point inside the ore
+        Assert.Single(req.Points, p => (p.X, p.Y) == (490, 340));            // as ore, not again as stone
         Assert.Contains(rig.Log, l => l.EndsWith("is the target: clearing at 13 points (1 ore, 12 stone)"));
     }
 

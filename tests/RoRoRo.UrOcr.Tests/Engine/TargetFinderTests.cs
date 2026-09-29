@@ -144,6 +144,79 @@ public class TargetFinderTests
     }
 
     [Fact]
+    public void A_patch_three_blocks_wide_gets_a_point_on_each_block()
+    {
+        var targets = TargetFinder.Find(Frame(400, 300, (260, 130, 120, 40, Cyan)), Setup(radius: 4));
+
+        Assert.Equal(new[] { (280, 150), (320, 150), (360, 150) }, targets.Where(t => t.Ore).Select(At));
+        Assert.Equal(new[] { "ore 1", "ore 2", "ore 3" }, targets.Where(t => t.Ore).Select(t => t.Label));
+        Assert.DoesNotContain(targets, t => !t.Ore && At(t) is (280, 150) or (320, 150) or (360, 150));
+    }
+
+    [Fact]
+    public void A_patch_three_blocks_square_gets_nine_points()
+    {
+        var targets = TargetFinder.Find(Frame(400, 300, (260, 50, 120, 120, Cyan)), Setup(radius: 4));
+
+        var ore = targets.Where(t => t.Ore).Select(At).ToHashSet();
+        var expected = from y in new[] { 70, 110, 150 } from x in new[] { 280, 320, 360 } select (x, y);
+        Assert.Equal(expected.ToHashSet(), ore);
+    }
+
+    [Fact]
+    public void A_patch_smaller_than_a_block_off_the_grid_keeps_its_centre()
+    {
+        var targets = TargetFinder.Find(Frame(400, 300, (250, 170, 20, 20, Cyan)), Setup());
+
+        Assert.Equal(new[] { new FinderTarget(260, 180, true, "ore 1") }, targets.Where(t => t.Ore));
+    }
+
+    [Fact]
+    public void Points_closer_than_half_a_block_keep_the_one_nearest_the_character()
+    {
+        // Centre (275, 155) and the grid point (280, 150) are 7 px apart; the centre is nearer (200, 150).
+        var targets = TargetFinder.Find(Frame(400, 300, (265, 140, 30, 30, Cyan)), Setup());
+
+        Assert.Equal(new[] { new FinderTarget(275, 155, true, "ore 1") }, targets.Where(t => t.Ore));
+    }
+
+    [Fact]
+    public void No_ore_point_on_the_character_and_its_stone_point_stays()
+    {
+        var targets = TargetFinder.Find(Frame(400, 300, (180, 130, 40, 40, Cyan)), Setup());   // ore colour on the centre
+
+        Assert.DoesNotContain(targets, t => t.Ore);
+        Assert.Equal(new FinderTarget(200, 150, false, "stone 1"), targets[0]);
+        Assert.Equal(13, targets.Count);
+    }
+
+    [Fact]
+    public void Ore_around_the_character_is_aimed_at_everywhere_but_the_centre()
+    {
+        var targets = TargetFinder.Find(Frame(400, 300, (140, 90, 120, 120, Cyan)), Setup());
+
+        var ore = targets.Where(t => t.Ore).ToList();
+        Assert.Equal(8, ore.Count);
+        Assert.All(ore, t => Assert.True((t.X - 200) * (t.X - 200) + (t.Y - 150) * (t.Y - 150) > 20 * 20));
+        Assert.Contains(targets, t => !t.Ore && At(t) == (200, 150));
+        Assert.Equal(13, targets.Count);                            // 8 ore, the stone centre, 4 stone past the patch
+    }
+
+    [Fact]
+    public void Ore_everywhere_fills_64_points_nearest_first_none_on_the_character()
+    {
+        var cyanFrame = new FramePixels(800, 600, Frames.Solid(800, 600, Cyan));
+
+        var targets = TargetFinder.Find(cyanFrame, Setup(w: 800, h: 600, cx: 400, cy: 300, radius: 5));
+
+        Assert.Equal(TargetFinder.MaxPoints, targets.Count);
+        Assert.All(targets, t => Assert.True(t.Ore));
+        var d2 = targets.Select(t => (t.X - 400) * (t.X - 400) + (t.Y - 300) * (t.Y - 300)).ToList();
+        Assert.Equal(d2.OrderBy(d => d), d2);
+        Assert.True(d2.Min() > 20 * 20);
+    }
+
+    [Fact]
     public void A_frame_at_another_size_gives_the_same_points()
     {
         var measured = TargetFinder.Find(Frame(400, 300, (260, 130, 40, 40, Cyan)), Setup());
