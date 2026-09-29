@@ -64,6 +64,8 @@ The eight ring spots touch about 8 of the 70 blocks in view. With an ore finder 
 
 The block size is read from the screen on every pass. The camera stays zoomed out, but the game pulls it in to the first wall behind you, so a block is about 22 px on the open surface, 32 px in a pit and 170 px down a one-block shaft. Ur OCR measures the repeat of the rock pattern around your character and uses it for the grid, the reach and the outline box (one block square, 16 to 240 px). When the frame shows no clear pattern, it uses the `pitch` you measured for the layer. The log says which it used, `block size 32 px (read from the frame)` or `block size 50 px (layer default; no clear pattern)`, each time the size changes.
 
+When nothing is in reach, the pulse rides longer each time (up to 30 s), so a tunnel where the camera is jammed close costs little. When it can't tell the block size, it checks fewer spots with a bigger box.
+
 The finder goes in the measured file, one entry per layer you clear on, in pixels of the file's `recordedClientW` x `recordedClientH` (the values below show the shape; measure your own):
 
     "finders": [
