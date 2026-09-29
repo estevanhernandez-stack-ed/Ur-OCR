@@ -13,13 +13,13 @@ public class PulseLoopFinderTests
 {
     private sealed record Rig(PulseLoop Loop, ScriptedMacros Macros, ScriptedReader Reader, PulseClock Clock, List<string> Log);
 
-    private static Rig Build(RingDefinition? ring = null, FramePixels? frame = null)
+    private static Rig Build(RingDefinition? ring = null, FramePixels? frame = null, PulseConfig? config = null)
     {
         var macros = new ScriptedMacros();
         var reader = new ScriptedReader { Next = ScriptedReader.All(PulseFixtures.Grey), Frame = frame ?? PulseFixtures.Calm() };
         var clock = new PulseClock();
         var log = new List<string>();
-        var loop = new PulseLoop(PulseFixtures.Config(), new[] { ring ?? PulseFixtures.RingWithFinder() },
+        var loop = new PulseLoop(config ?? PulseFixtures.Config(), new[] { ring ?? PulseFixtures.RingWithFinder() },
             PulseFixtures.Spots(), reader, macros, clock, log.Add);
         return new Rig(loop, macros, reader, clock, log);
     }
@@ -65,7 +65,7 @@ public class PulseLoopFinderTests
         var req = Assert.Single(rig.Macros.ClearAts);
         Assert.Equal("42", req.Target);
         Assert.Equal(new ClearAtClient(800, 599), req.Client);          // the measured client, not the live one
-        Assert.Equal(new ClearAtOutline(50, 50, 60, 225), req.Outline);
+        Assert.Equal(new ClearAtOutline(240, 240, 60, 225), req.Outline);   // plain rock: no block size read
         Assert.Equal(13, req.Points.Count);
         Assert.Equal(new ClearAtPoint(390, 340, "stone 1"), req.Points[0]);
         Assert.Equal(new[] { 7 }, rig.Reader.FramePids);
@@ -114,6 +114,108 @@ public class PulseLoopFinderTests
         Assert.Equal("id-on", rig.Macros.RunIds.Last());
         Assert.Contains(rig.Log, l => l == "nothing in reach to clear (all 13 points skipped): riding a burst");
         Assert.DoesNotContain(rig.Macros.RunIds, id => id.StartsWith("id-clear-"));
+    }
+
+    /// <summary>From a ClearAt just ended in Bursting: rides out the burst in 500 ms steps and returns
+    /// its length, then settles and reads again, and ends the next ClearAt with the given reply.</summary>
+    private static async Task<int> RideBurstThenClear(Rig r, GetPlaybackResponse next)
+    {
+        Assert.Equal(PulseState.Bursting, r.Loop.State);
+        await Tick(r);                    // Auto Mine on finished: the ride timer starts
+        var ms = 0;
+        while (r.Loop.State == PulseState.Bursting)
+        {
+            r.Clock.Advance(500);
+            ms += 500;
+            await Tick(r);
+        }
+        await Tick(r);                    // Auto Mine off finished: settle
+        r.Clock.Advance(1000);
+        r.Macros.Script(ScriptedMacros.ClearAtId, next);
+        await Tick(r);                    // read, ClearAt started
+        await Tick(r);                    // ClearAt ended
+        return ms;
+    }
+
+    [Fact]
+    public async Task Each_pass_in_a_row_with_nothing_in_reach_rides_twice_as_long()
+    {
+        var rig = Build();
+        rig.Macros.Script(ScriptedMacros.ClearAtId, ScriptedMacros.Skipped);
+        await FirstRead(rig);
+        await Tick(rig);                  // pass 1 skipped
+
+        var bursts = new List<int>();
+        for (var i = 0; i < 3; i++) bursts.Add(await RideBurstThenClear(rig, ScriptedMacros.Skipped));
+        bursts.Add(await RideBurstThenClear(rig, ScriptedMacros.Finished));   // pass 5 clears: settle, read
+        rig.Clock.Advance(1000);
+        await Tick(rig);                  // read, ClearAt started
+        rig.Macros.Script(ScriptedMacros.ClearAtId, ScriptedMacros.Skipped);
+        await Tick(rig);                  // pass 6 skipped
+        bursts.Add(await RideBurstThenClear(rig, ScriptedMacros.Skipped));
+
+        Assert.Equal(new[] { 2000, 4000, 8000, 16000, 2000 }, bursts);
+        Assert.Equal(new[]
+        {
+            "nothing in reach to clear (all 13 points skipped): riding a burst",
+            "nothing in reach to clear (all 13 points skipped): riding a burst of 4 s",
+            "nothing in reach to clear (all 13 points skipped): riding a burst of 8 s",
+            "nothing in reach to clear (all 13 points skipped): riding a burst of 16 s",
+            "nothing in reach to clear (all 13 points skipped): riding a burst",
+            "nothing in reach to clear (all 13 points skipped): riding a burst of 4 s",
+        }, rig.Log.Where(l => l.StartsWith("nothing in reach")));
+    }
+
+    [Fact]
+    public async Task The_growing_burst_stops_at_30_seconds()
+    {
+        var rig = Build();
+        rig.Macros.Script(ScriptedMacros.ClearAtId, ScriptedMacros.Skipped);
+        await FirstRead(rig);
+        await Tick(rig);
+
+        var bursts = new List<int>();
+        for (var i = 0; i < 7; i++) bursts.Add(await RideBurstThenClear(rig, ScriptedMacros.Skipped));
+
+        Assert.Equal(new[] { 2000, 4000, 8000, 16000, 30000, 30000, 30000 }, bursts);
+        Assert.Equal(PulseLoop.MaxBurstMs, bursts.Max());
+        Assert.Contains(rig.Log, l => l.EndsWith("riding a burst of 30 s"));
+    }
+
+    [Fact]
+    public async Task Going_to_top_resets_the_burst()
+    {
+        // Clears on black (layer 2): a grey frame is past it.
+        var ring = PulseFixtures.RingWithFinder("black");
+        var rig = Build(ring, Solid(PulseFixtures.Black), PulseFixtures.Config(target: 2));
+        rig.Macros.Script(ScriptedMacros.ClearAtId, ScriptedMacros.Skipped);
+        await FirstRead(rig);
+        await Tick(rig);                  // pass 1 skipped: 2 s
+        Assert.Equal(2000, await RideBurstThenClear(rig, ScriptedMacros.Skipped));
+        Assert.Equal(4000, await RideBurstThenClear(rig, ScriptedMacros.Skipped));   // the next burst would be 8 s
+
+        rig.Reader.Frame = Solid(PulseFixtures.Grey);
+        await Tick(rig);                  // Auto Mine on finished
+        while (rig.Loop.State == PulseState.Bursting)
+        {
+            rig.Clock.Advance(500);
+            await Tick(rig);
+        }
+        await Tick(rig);                  // off finished: settle
+        rig.Clock.Advance(1000);
+        await Tick(rig);                  // read grey: past the target, Go to Top started
+        Assert.Equal(PulseState.GoingToTop, rig.Loop.State);
+        await Tick(rig);                  // Go to Top finished: riding; Auto Mine on started
+        await Tick(rig);                  // on finished: ride timer
+        rig.Reader.Frame = Solid(PulseFixtures.Black);
+        rig.Clock.Advance(2000);
+        await Tick(rig);                  // Auto Mine off started
+        await Tick(rig);                  // settle
+        rig.Clock.Advance(1000);
+        await Tick(rig);                  // read black: ClearAt started
+        await Tick(rig);                  // skipped
+
+        Assert.Equal(2000, await RideBurstThenClear(rig, ScriptedMacros.Skipped));
     }
 
     [Fact]
@@ -323,16 +425,49 @@ public class PulseLoopFinderTests
     }
 
     [Fact]
-    public async Task A_frame_with_no_clear_pattern_uses_the_layer_block_size()
+    public async Task A_frame_with_no_clear_pattern_uses_the_layer_block_size_with_a_big_box()
     {
         var rig = Build();                                   // plain grey rock
 
         await FirstRead(rig);
 
         var req = Assert.Single(rig.Macros.ClearAts);
-        Assert.Equal(new ClearAtOutline(50, 50, 60, 225), req.Outline);
-        Assert.Contains(req.Points, p => (p.X, p.Y) == (440, 340));
+        Assert.Equal(new ClearAtOutline(FinderSetup.MaxOutlineSide, FinderSetup.MaxOutlineSide, 60, 225), req.Outline);
+        Assert.Contains(req.Points, p => (p.X, p.Y) == (440, 340));   // the grid still one layer block apart
         Assert.Contains(rig.Log, l => l == "block size 50 px (layer default; no clear pattern)");
+    }
+
+    /// <summary>Radius 5 around 390,340: far more than 16 grid points fit a 240 box on the 800x599 client.</summary>
+    private static RingDefinition WideRing() =>
+        PulseFixtures.Ring() with { Finders = new[] { PulseFixtures.Finder() with { RadiusBlocks = 5 } } };
+
+    [Fact]
+    public async Task An_unread_block_size_checks_the_16_nearest_stone_points_and_every_ore_point()
+    {
+        var rig = Build(WideRing(), PulseFixtures.Calm((565, 315, 50, 50, PulseFixtures.Cyan)));
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(240, 240, 60, 225), req.Outline);
+        Assert.Equal(new ClearAtPoint(588, 336, "ore 1"), req.Points[0]);    // the patch centre, nearer than its grid point
+        Assert.Equal(16, req.Points.Count(p => p.Label.StartsWith("stone")));
+        Assert.Equal(17, req.Points.Count);
+        Assert.Equal(new ClearAtPoint(390, 340, "stone 1"), req.Points[1]);   // nearest stone first
+        Assert.Equal("stone 16", req.Points[^1].Label);
+        Assert.Contains(rig.Log, l => l.EndsWith("is the target: clearing at 17 points (1 ore, 16 stone)"));
+    }
+
+    [Fact]
+    public async Task A_read_block_size_keeps_the_box_at_the_block_and_the_full_grid()
+    {
+        var rig = Build(WideRing(), Blocks(32));
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(32, 32, 60, 225), req.Outline);
+        Assert.Equal(TargetFinder.MaxPoints, req.Points.Count);   // radius 5 is 81 grid points: the full grid, capped at 64
     }
 
     [Fact]

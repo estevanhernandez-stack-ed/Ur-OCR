@@ -14,7 +14,8 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// At it: Clearing. With an ore finder for the aim layer, one ClearAt call carries the finder's points
 /// (ore patches, then a block grid) from a calm frame; without one, one Clear spot per ring spot,
 /// ore first. Ur Task skips a point or spot with no outline. A pass that cleared something settles and
-/// reads again; a pass that cleared nothing rides a burst (Bursting) first. RockCapMinutes on one
+/// reads again; a pass that cleared nothing rides a burst (Bursting) first, twice as long for each such
+/// pass in a row (RideLonger). RockCapMinutes on one
 /// aim layer with nothing cleared (time behind or paused not counted): Go to Top. Each tick does
 /// everything it can and returns at the first wait. Nothing starts unless the account is in front,
 /// read again right before each macro; a playback already started is still followed.
@@ -25,6 +26,10 @@ public sealed class PulseLoop
     public const int MaxStepsPerTick = 12;
     /// <summary>The smallest outline box sent: the smallest block PitchEstimator reads.</summary>
     public const int MinOutlineSide = 16;
+    /// <summary>The longest burst a run of passes with nothing in reach grows to.</summary>
+    public const int MaxBurstMs = 30000;
+    /// <summary>Stone points checked when the block size could not be read off the frame.</summary>
+    public const int UnreadStonePoints = 16;
 
     private readonly PulseConfig _config;
     private readonly RingDefinition? _ring;
@@ -36,6 +41,7 @@ public sealed class PulseLoop
     private readonly FinderSetup? _finder;            // the aim layer's ore finder; null clears the 8 spots
     private FinderSetup? _pass;                        // this pass's finder: the block size read off the frame
     private string? _blockLogged;                      // the last block size line, logged only when it changes
+    private bool _pitchUnread;                         // this pass uses the layer default block size
     private IReadOnlyList<FinderTarget>? _targets;     // this pass's ClearAt points; null on a Clear spot pass
     private bool _clearAtEnded;                        // this pass's ClearAt has ended
     private bool _frameLogged;
@@ -50,6 +56,8 @@ public sealed class PulseLoop
     private DateTimeOffset _progressAt;    // last new layer or cleared block, for the rock cap
     private bool _unreadableLogged;
     private DateTimeOffset? _behindSince;  // first tick behind (or held), for the rock cap
+    private int _emptyPasses;              // passes in a row with nothing in reach, for the growing burst
+    private int _burstMs;                  // this Bursting state's ride
 
     public PulseLoop(PulseConfig config, IReadOnlyList<RingDefinition> rings, IReadOnlyList<Trigger> triggers,
         ISpotReader reader, IMacroRunClient macros, IClock clock, Action<string> log)
@@ -138,6 +146,7 @@ public sealed class PulseLoop
             case PulseState.GoingToTop:
                 if (!_macroDone) return Begin(M.GoToTop, PulseMacroNames.GoToTop);
                 Layer = null;              // back at the top: the rock cap starts over
+                _emptyPasses = 0;          // and so does the growing burst
                 return Enter(PulseState.Riding);
 
             default:
@@ -181,6 +190,7 @@ public sealed class PulseLoop
         if (Route(layer, seen, now) is { } moved) return moved;
 
         var targets = TargetFinder.Find(frame, pass);
+        if (_pitchUnread) targets = NearestStone(targets, UnreadStonePoints);
         if (targets.Count == 0)
         {
             _log($"{seen} is the target, but the ore finder has no point inside the window: riding a burst");
@@ -264,6 +274,10 @@ public sealed class PulseLoop
         return null;
     }
 
+    /// <summary>Every ore point and the first <paramref name="stone"/> stone points (they come nearest first).</summary>
+    private static IReadOnlyList<FinderTarget> NearestStone(IReadOnlyList<FinderTarget> targets, int stone) =>
+        targets.Where(t => t.Ore).Concat(targets.Where(t => !t.Ore).Take(stone)).ToList();
+
     private static string Percent(double share) =>
         (share * 100).ToString("0", CultureInfo.InvariantCulture) + "%";
 
@@ -274,8 +288,10 @@ public sealed class PulseLoop
     /// <summary>The finder for this pass (spec "Block size is read every pass"): the camera pulls in to
     /// the first wall, so the block size is read off the calm frame and sets the grid, the reach and
     /// the outline box (w = h = the block, 16 to 240). A frame with no clear pattern falls back to the
-    /// layer's measured pitch. The frame may be another size than the measured client: the centre is
-    /// scaled into it and the block scaled back to measured pixels.</summary>
+    /// layer's measured pitch for the grid, with the largest box (240) and only the nearest stone points:
+    /// a camera jammed against the character shows blocks far bigger than the default. The frame may be
+    /// another size than the measured client: the centre is scaled into it and the block scaled back to
+    /// measured pixels.</summary>
     private FinderSetup ForPass(FramePixels frame, FinderSetup f)
     {
         var (sx, sy) = Scale(frame, f);
@@ -283,7 +299,8 @@ public sealed class PulseLoop
         var pitch = read is null
             ? f.Pitch
             : Math.Max(FinderSetup.MinPitch, (int)Math.Round(read.Pitch * 2 / (sx + sy), MidpointRounding.AwayFromZero));
-        var side = Math.Clamp(pitch, MinOutlineSide, FinderSetup.MaxOutlineSide);
+        _pitchUnread = read is null;
+        var side = _pitchUnread ? FinderSetup.MaxOutlineSide : Math.Clamp(pitch, MinOutlineSide, FinderSetup.MaxOutlineSide);
         var minCount = Math.Min(f.Outline.MinCount, side * side);
 
         var line = $"block size {pitch} px ({(read is null ? "layer default; no clear pattern" : "read from the frame")})";
@@ -319,20 +336,38 @@ public sealed class PulseLoop
         {
             if (_cleared.Count > 0)
             {
+                _emptyPasses = 0;
                 _log($"cleared at the ore finder's points ({targets.Count} tried): reading again");
                 return Enter(PulseState.Pausing, macroDone: true);   // Auto Mine is still off: just settle
             }
-            _log($"nothing in reach to clear (all {targets.Count} points skipped): riding a burst");
-            return Enter(PulseState.Bursting);
+            return RideLonger($"nothing in reach to clear (all {targets.Count} points skipped)");
         }
         if (_cleared.Count > 0)
         {
+            _emptyPasses = 0;
             var skipped = _skipped.Count > 0 ? $"; nothing to clear at {string.Join(" ", _skipped)}" : "";
             _log($"cleared {string.Join(" ", _cleared)}{skipped}: reading again");
             return Enter(PulseState.Pausing, macroDone: true);   // Auto Mine is still off: just settle
         }
-        _log($"nothing in reach to clear ({_skipped.Count} spots skipped): riding a burst");
-        return Enter(PulseState.Bursting);
+        return RideLonger($"nothing in reach to clear ({_skipped.Count} spots skipped)");
+    }
+
+    /// <summary>A pass with nothing in reach rides a burst twice as long as the last one in a row
+    /// (BurstMs, 2x, 4x, ... up to MaxBurstMs): a view that stays unclearable, such as a camera
+    /// jammed close in a tunnel, then costs little. A pass that clears or a Go to Top starts it over.</summary>
+    private bool RideLonger(string why)
+    {
+        var ms = (long)_config.BurstMs;
+        for (var i = 0; i < _emptyPasses && ms < MaxBurstMs; i++) ms *= 2;
+        _emptyPasses++;
+        var burst = (int)Math.Min(ms, Math.Max(MaxBurstMs, _config.BurstMs));
+        var length = burst > _config.BurstMs
+            ? $" of {(burst / 1000.0).ToString("0.#", CultureInfo.InvariantCulture)} s"
+            : "";
+        _log($"{why}: riding a burst{length}");
+        Enter(PulseState.Bursting);
+        _burstMs = burst;
+        return true;
     }
 
     private void OnCallEnded(CallResult r)
@@ -395,6 +430,7 @@ public sealed class PulseLoop
     private bool Enter(PulseState next, bool macroDone = false)
     {
         State = next;
+        _burstMs = _config.BurstMs;       // a growing burst is set by RideLonger after this
         _macroDone = macroDone;
         _until = macroDone ? TimerFor(next) : null;
         return true;
@@ -402,7 +438,8 @@ public sealed class PulseLoop
 
     private DateTimeOffset? TimerFor(PulseState state) => state switch
     {
-        PulseState.Riding or PulseState.Bursting => _clock.Now.AddMilliseconds(_config.BurstMs),
+        PulseState.Riding => _clock.Now.AddMilliseconds(_config.BurstMs),
+        PulseState.Bursting => _clock.Now.AddMilliseconds(_burstMs),
         PulseState.Pausing => _clock.Now.AddMilliseconds(_config.SettleMs),
         _ => null,
     };
