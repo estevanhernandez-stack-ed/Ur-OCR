@@ -26,15 +26,6 @@ public static class PitchEstimator
     /// <summary>The two axes agree when their lags are within this share of the larger.</summary>
     public const double AxisAgreement = 0.15;
 
-    /// <summary>The client size the HUD bounds below are measured in; they scale with the frame.</summary>
-    public const int HudClientW = 800;
-    public const int HudClientH = 599;
-    /// <summary>Left of this: the icon column (gifts, pickaxe, Leagues, currencies).</summary>
-    public const int HudLeft = 160;
-    /// <summary>Above this: the top bar and the "Go to Top" button.</summary>
-    public const int HudTop = 70;
-    /// <summary>Below this: the hotbar (slots about 78 px apart, the strongest repeat on screen) and the bottom icons.</summary>
-    public const int HudBottom = 470;
     /// <summary>The region's largest half-size, whatever the block size searched for.</summary>
     public const int MaxHalf = 260;
     /// <summary>The moving average subtracted from each edge profile: slopes longer than this go.</summary>
@@ -46,11 +37,9 @@ public static class PitchEstimator
     public const int CharacterRadius = 16;
 
     /// <summary>The HUD in this frame, scaled from the measured client: a read stays right of Left,
-    /// below Top and above Bottom.</summary>
+    /// below Top and above Bottom. Shared with TargetFinder via HudMask.</summary>
     public static (int Left, int Top, int Bottom) HudBounds(FramePixels frame) =>
-        (HudLeft * frame.Width / HudClientW,
-         HudTop * frame.Height / HudClientH,
-         Math.Min(frame.Height - 1, HudBottom * frame.Height / HudClientH));
+        HudMask.Bounds(frame.Width, frame.Height);
 
     public static PitchEstimate? Estimate(FramePixels frame, int centerX, int centerY, int minPitch = CharacterRadius, int maxPitch = 240)
     {

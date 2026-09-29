@@ -16,9 +16,11 @@ public sealed record FinderTarget(int X, int Y, bool Ore, string Label);
 /// the character are dropped (the sprite covers that block and reads as ore), and of two ore points
 /// closer than half a block the one nearer the character stays. Then stone: a grid every Pitch out
 /// to RadiusBlocks blocks around the character, less the points inside an ore patch; the centre
-/// point always stays. Points whose outline box would leave the client are dropped. Ore nearest
-/// first, then stone nearest first, at most MaxPoints. Every coordinate is in the finder's measured client pixels; the frame
-/// may be another size and is sampled scaled.
+/// point always stays. Points whose outline box would leave the client are dropped, as is any point
+/// (ore or stone) inside the HUD mask shared with PitchEstimator (HudMask): the bottom bar, the left
+/// icon column, the top bar. Ore nearest first, then stone nearest first, at most MaxPoints. Every
+/// coordinate is in the finder's measured client pixels; the frame may be another size and is sampled
+/// scaled.
 /// </summary>
 public static class TargetFinder
 {
@@ -79,7 +81,7 @@ public static class TargetFinder
                 if (i * i + j * j > r * r) continue;
                 var x = f.CenterX + i * f.Pitch;
                 var y = f.CenterY + j * f.Pitch;
-                if (!f.BoxFits(x, y)) continue;
+                if (!f.BoxFits(x, y) || HudMask.Contains(x, y, f.ClientW, f.ClientH)) continue;
                 int cx = x / step, cy = y / step;
                 var centre = i == 0 && j == 0;   // the block under the character: ore points skip it, so stone keeps it
                 if (!centre && cx < cols && cy < rows && inOre[cx, cy]) continue;
@@ -88,7 +90,8 @@ public static class TargetFinder
 
         var halfBlock2 = (long)f.Pitch * f.Pitch / 4;
         var kept = new List<(int X, int Y)>();
-        foreach (var p in Nearest(ore.Where(p => f.BoxFits(p.X, p.Y) && Dist2(p, f.CenterX, f.CenterY) > halfBlock2), f))
+        foreach (var p in Nearest(ore.Where(p => f.BoxFits(p.X, p.Y) && !HudMask.Contains(p.X, p.Y, f.ClientW, f.ClientH)
+                                                  && Dist2(p, f.CenterX, f.CenterY) > halfBlock2), f))
             if (kept.All(k => Dist2(p, k.X, k.Y) >= halfBlock2)) kept.Add(p);
 
         return kept

@@ -93,13 +93,15 @@ public class TargetFinderTests
     [Fact]
     public void Points_whose_outline_box_leaves_the_window_are_dropped()
     {
-        var setup = Setup(cx: 30);
+        // The right edge, not the left: the left column is HUD territory (below), and this test's
+        // job is the outline-box-fits rule alone.
+        var setup = Setup(cx: 370);
 
-        var targets = TargetFinder.Find(Frame(400, 300, (0, 130, 20, 40, Cyan)), setup);
+        var targets = TargetFinder.Find(Frame(400, 300, (380, 130, 20, 40, Cyan)), setup);
 
-        Assert.Equal(9, targets.Count);                             // the 4 grid points left of x = 20 are gone
+        Assert.Equal(9, targets.Count);                             // the 4 grid points right of x = 380 are gone
         Assert.All(targets, t => Assert.True(setup.BoxFits(t.X, t.Y)));
-        Assert.DoesNotContain(targets, t => t.Ore);                 // the patch's centre (10, 150) is too near the edge
+        Assert.DoesNotContain(targets, t => t.Ore);                 // the patch's centre (390, 150) is too near the edge
     }
 
     [Fact]
@@ -223,5 +225,49 @@ public class TargetFinderTests
         var doubled = TargetFinder.Find(Frame(800, 600, (520, 260, 80, 80, Cyan)), Setup());
 
         Assert.Equal(measured, doubled);
+    }
+
+    // Bug (2026-09-28): a ClearAt point landed on the inventory button in the bottom bar and opened
+    // the menu. TargetFinder now drops every point (ore and stone) inside the HUD mask shared with
+    // PitchEstimator: x < 160, y < 70 or y > 470 in the measured 800x599 client.
+
+    private static FinderSetup HudSetup(int pitch, int radius, IReadOnlyList<OreColour>? ore = null) =>
+        new("stone", 800, 599, Pitch: pitch, CenterX: 400, CenterY: 310, RadiusBlocks: radius,
+            Outline: new OutlineBox(40, 40), Ore: ore ?? Array.Empty<OreColour>(), OreToleranceRgb: 40);
+
+    [Fact]
+    public void The_stone_grid_drops_points_in_the_hud_the_centre_stays()
+    {
+        // Orthogonal neighbours only (radius 1): right (650,310) clears every bound, left (150,310) is
+        // left of the icon column, down (400,560) is past the hotbar, up (400,60) is above the top bar.
+        var targets = TargetFinder.Find(Frame(800, 599), HudSetup(pitch: 250, radius: 1));
+
+        Assert.Equal(new[] { (400, 310), (650, 310) }, targets.Select(At).OrderBy(p => p.Item1));
+        Assert.All(targets, t => Assert.False(t.Ore));
+        Assert.DoesNotContain(targets, t => t.X < 160 || t.Y < 70 || t.Y > 470);
+    }
+
+    [Fact]
+    public void A_grid_that_reaches_past_the_hotbar_drops_only_the_points_below_it()
+    {
+        // Pitch 100, radius 2: 13 lattice points, well under the 64 cap, one of them (400, 510) past
+        // the hotbar line at 470.
+        var targets = TargetFinder.Find(Frame(800, 599), HudSetup(pitch: 100, radius: 2));
+
+        Assert.Equal(12, targets.Count);
+        Assert.DoesNotContain(targets, t => t.Y > 470);
+        Assert.Contains(targets, t => At(t) == (400, 310));   // the centre, outside the mask, always stays
+    }
+
+    [Fact]
+    public void Ore_inside_the_hud_gives_no_points()
+    {
+        // A cyan HUD icon in the bottom bar (y 480..520), within reach of the character at (400, 310).
+        var ore = new[] { new OreColour("cyan crystal", Cyan) };
+        var targets = TargetFinder.Find(
+            Frame(800, 599, (380, 480, 40, 40, Cyan)),
+            HudSetup(pitch: 40, radius: 5, ore: ore));
+
+        Assert.DoesNotContain(targets, t => t.Ore);
     }
 }

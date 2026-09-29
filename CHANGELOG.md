@@ -19,6 +19,10 @@
 
 - **One owner per account and ring.** For an account with a pulse, the pulse replaces that ring's 0.5.0 triggers (the eight spots, the rock cap and the camera rule), which stand down while that account is in front. Accounts without a pulse keep the 0.5.0 ring triggers as they were.
 
+### Fixed
+
+- The ore finder never aims at the game's buttons (the bottom bar, the left column, the top bar). A spot on the inventory button once opened the menu and stopped the pulse.
+
 ### Notes
 
 - Turn on Hide My Pets in the game's Settings before running a pulse. Pets sit over the character and the ring spots and read as blocks.
