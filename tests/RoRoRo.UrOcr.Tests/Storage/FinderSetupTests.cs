@@ -9,8 +9,39 @@ public class FinderSetupTests
         RadiusBlocks: 5, Outline: new OutlineBox(50, 50),
         Ore: new[] { new OreColour("cyan crystal", new Rgb(60, 220, 230)) }, OreToleranceRgb: 40);
 
+    /// <summary>The spec's own guard example: the Auto Mine dot at (55, 289), a 3x3 box.</summary>
+    internal static GuardBox ValidGuard() => new(55, 289, 3, 3, new Rgb(255, 19, 90), 30);
+
     [Fact]
     public void A_measured_finder_is_valid() => Assert.Null(Valid().Validate());
+
+    [Fact]
+    public void A_finder_with_no_guard_is_valid() => Assert.Null(Valid().Guard);
+
+    [Fact]
+    public void A_finder_with_a_guard_is_valid() => Assert.Null((Valid() with { Guard = ValidGuard() }).Validate());
+
+    [Theory]
+    [InlineData("w", "guard.w and guard.h must be 1 to 9")]
+    [InlineData("h", "guard.w and guard.h must be 1 to 9")]
+    [InlineData("tolerance", "guard.tolerance must be 1 to 441")]
+    [InlineData("expect", "guard.expect has a channel outside 0 to 255")]
+    [InlineData("outside", "must sit inside the 800x599 game area")]
+    public void A_bad_guard_value_is_named(string what, string expected)
+    {
+        var guard = ValidGuard();
+        var bad = what switch
+        {
+            "w" => guard with { W = 10 },
+            "h" => guard with { H = 0 },
+            "tolerance" => guard with { Tolerance = 442 },
+            "expect" => guard with { Expect = new Rgb(256, 0, 0) },
+            "outside" => guard with { X = 798 },
+            _ => throw new ArgumentOutOfRangeException(nameof(what)),
+        };
+
+        Assert.Contains(expected, (Valid() with { Guard = bad }).Validate());
+    }
 
     /// <summary>A block in a one-block shaft is about 170 px; Ur Task takes a box up to 240.</summary>
     [Fact]

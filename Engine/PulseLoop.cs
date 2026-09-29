@@ -337,9 +337,11 @@ public sealed class PulseLoop
         {
             if (_clearAtEnded) return EndPass();
             var f = _pass!;
+            var guard = f.Guard is { } g ? new ClearAtGuard(g.X, g.Y, g.W, g.H, g.Expect, g.Tolerance) : null;
             _call.BeginClearAt(new ClearAtClient(f.ClientW, f.ClientH),
                 targets.Select(t => new ClearAtPoint(t.X, t.Y, t.Label)).ToList(),
-                new ClearAtOutline(f.Outline.W, f.Outline.H, f.Outline.MinCount, f.Outline.WhiteMin));
+                new ClearAtOutline(f.Outline.W, f.Outline.H, f.Outline.MinCount, f.Outline.WhiteMin),
+                guard);
             return true;
         }
         if (_spot < 0)

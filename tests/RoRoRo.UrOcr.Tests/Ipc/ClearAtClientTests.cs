@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 using RoRoRo.UrOcr.Ipc;
+using RoRoRo.UrOcr.Storage;
 using Xunit;
 
 namespace RoRoRo.UrOcr.Tests.Ipc;
@@ -15,6 +16,10 @@ public class ClearAtClientTests
 {
     private static ClearAtRequest Request() => BridgeContract.ForClearAt("42", new ClearAtClient(800, 599),
         new[] { new ClearAtPoint(412, 288, "ore 1") }, new ClearAtOutline(50, 50, 60, 225));
+
+    private static ClearAtRequest RequestWithGuard() => BridgeContract.ForClearAt("42", new ClearAtClient(800, 599),
+        new[] { new ClearAtPoint(412, 288, "ore 1") }, new ClearAtOutline(50, 50, 60, 225),
+        guard: new ClearAtGuard(55, 289, 3, 3, new Rgb(255, 19, 90), 30));
 
     private static async Task<(TResponse Response, JsonDocument Request)> RoundTrip<TResponse>(
         Func<MacroRunClient, Task<TResponse>> call, string replyJson)
@@ -57,6 +62,27 @@ public class ClearAtClientTests
             "{\"contractVersion\":\"1.0\",\"method\":\"ClearAt\",\"callerPluginId\":\"626labs.ur-ocr\",\"target\":\"42\"," +
             "\"client\":{\"w\":800,\"h\":599},\"points\":[{\"x\":412,\"y\":288,\"label\":\"ore 1\"}]," +
             "\"outline\":{\"w\":50,\"h\":50,\"minCount\":60,\"whiteMin\":225},\"maxMsPerPoint\":null}",
+            json);
+    }
+
+    [Fact]
+    public void No_guard_means_no_guard_key()
+    {
+        var json = JsonSerializer.Serialize(Request(), BridgeContract.Json);
+
+        Assert.DoesNotContain("\"guard\"", json);
+    }
+
+    [Fact]
+    public void The_request_carries_the_guard_exactly_camelCase_with_expect()
+    {
+        var json = JsonSerializer.Serialize(RequestWithGuard(), BridgeContract.Json);
+
+        Assert.Equal(
+            "{\"contractVersion\":\"1.0\",\"method\":\"ClearAt\",\"callerPluginId\":\"626labs.ur-ocr\",\"target\":\"42\"," +
+            "\"client\":{\"w\":800,\"h\":599},\"points\":[{\"x\":412,\"y\":288,\"label\":\"ore 1\"}]," +
+            "\"outline\":{\"w\":50,\"h\":50,\"minCount\":60,\"whiteMin\":225},\"maxMsPerPoint\":null," +
+            "\"guard\":{\"x\":55,\"y\":289,\"w\":3,\"h\":3,\"expect\":{\"r\":255,\"g\":19,\"b\":90},\"tolerance\":30}}",
             json);
     }
 

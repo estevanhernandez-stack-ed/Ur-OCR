@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace RoRoRo.UrOcr.Storage;
 
 /// <summary>An ore colour the finder looks for, named for the measured file and the log.</summary>
@@ -8,14 +10,43 @@ public sealed record OreColour(string Name, Rgb Rgb);
 public sealed record OutlineBox(int W, int H, int MinCount = 60, int WhiteMin = 225);
 
 /// <summary>
+/// The pixel guard ClearAt checks before every press (live safety bug, 2026-09-28): a W x H box at
+/// (X, Y), its top-left corner, that must show Expect within Tolerance or Ur Task stops the whole
+/// ClearAt (reason check-failed) instead of pressing. Guards the Auto Mine dot against a menu or
+/// another player's profile covering the game mid-pass.
+/// </summary>
+public sealed record GuardBox(int X, int Y, int W, int H, Rgb Expect, int Tolerance)
+{
+    public const int MinSide = 1;
+    public const int MaxSide = 9;
+    public const int MaxTolerance = 441;
+
+    /// <summary>Null when ClearAt can use it, else one sentence naming the first problem.</summary>
+    public string? Validate(int clientW, int clientH)
+    {
+        if (W < MinSide || W > MaxSide || H < MinSide || H > MaxSide)
+            return $"guard.w and guard.h must be {MinSide} to {MaxSide}, not {W}x{H}.";
+        if (Expect is null || !ColorCriteria.InRange(Expect))
+            return "guard.expect has a channel outside 0 to 255.";
+        if (Tolerance < 1 || Tolerance > MaxTolerance)
+            return $"guard.tolerance must be 1 to {MaxTolerance}, not {Tolerance}.";
+        if (X < 0 || Y < 0 || X + W > clientW || Y + H > clientH)
+            return $"The guard box ({X}, {Y}, {W}x{H}) must sit inside the {clientW}x{clientH} game area.";
+        return null;
+    }
+}
+
+/// <summary>
 /// The ore finder for one layer of a ring (spec "Reach, measured, and the ore finder"), in pixels of
 /// the client it was measured in (ClientW x ClientH, the measured file's recorded size, which is what
 /// ClearAt sends as its client). Pitch is one block at that layer; the grid reaches RadiusBlocks
 /// blocks around the character's centre. Stored in triggers.json on the ring; imported from the
-/// measured file's "finders".
+/// measured file's "finders". Guard: the optional pixel guard sent with every ClearAt, null on a
+/// finder measured before it, so old files load unchanged.
 /// </summary>
 public sealed record FinderSetup(string Layer, int ClientW, int ClientH, int Pitch, int CenterX, int CenterY,
-    int RadiusBlocks, OutlineBox Outline, IReadOnlyList<OreColour> Ore, int OreToleranceRgb)
+    int RadiusBlocks, OutlineBox Outline, IReadOnlyList<OreColour> Ore, int OreToleranceRgb,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GuardBox? Guard = null)
 {
     public const int DefaultRadiusBlocks = 5;
     /// <summary>Samples are taken every Pitch / 4 pixels: 4 is the smallest pitch with a 1 px step.</summary>
@@ -52,6 +83,7 @@ public sealed record FinderSetup(string Layer, int ClientW, int ClientH, int Pit
         }
         if (OreToleranceRgb < 1 || OreToleranceRgb > ColorCriteria.MaxTolerance)
             return $"oreToleranceRgb must be 1 to {ColorCriteria.MaxTolerance}, not {OreToleranceRgb}.";
+        if (Guard is { } guard && guard.Validate(ClientW, ClientH) is { } guardProblem) return guardProblem;
         return null;
     }
 

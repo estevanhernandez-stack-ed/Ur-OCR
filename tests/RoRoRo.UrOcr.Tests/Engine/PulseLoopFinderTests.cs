@@ -72,6 +72,29 @@ public class PulseLoopFinderTests
     }
 
     [Fact]
+    public async Task Without_a_guard_ClearAt_carries_none()
+    {
+        var rig = Build();
+
+        await FirstRead(rig);
+
+        Assert.Null(Assert.Single(rig.Macros.ClearAts).Guard);
+    }
+
+    [Fact]
+    public async Task The_finder_s_guard_goes_on_every_ClearAt()
+    {
+        var guard = new GuardBox(55, 289, 3, 3, new Rgb(255, 19, 90), 30);
+        var ring = PulseFixtures.Ring() with { Finders = new[] { PulseFixtures.Finder() with { Guard = guard } } };
+        var rig = Build(ring);
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtGuard(55, 289, 3, 3, new Rgb(255, 19, 90), 30), req.Guard);
+    }
+
+    [Fact]
     public async Task Ore_goes_first_in_the_points()
     {
         var rig = Build(frame: PulseFixtures.Calm((465, 315, 50, 50, PulseFixtures.Cyan)));

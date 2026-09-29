@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace RoRoRo.UrOcr.Storage;
 
@@ -10,13 +11,15 @@ public sealed record MeasuredAction(int HoldForMs, string Macro, int CooldownMs 
 /// <summary>
 /// One layer's ore finder as the measured file holds it, in pixels of the file's recorded client
 /// size (spec "Reach, measured, and the ore finder"). A top-level "finders" list, not a field of
-/// "layers": ring-fit.ps1 -Write rewrites "layers" and keeps every other key.
+/// "layers": ring-fit.ps1 -Write rewrites "layers" and keeps every other key. Guard: the optional
+/// pixel guard sent with every ClearAt (live safety bug, 2026-09-28), same shape as the finder's.
 /// </summary>
 public sealed record MeasuredFinder(string Layer, int Pitch, int CenterX, int CenterY, OutlineBox Outline,
-    IReadOnlyList<OreColour> Ore, int OreToleranceRgb, int RadiusBlocks = FinderSetup.DefaultRadiusBlocks)
+    IReadOnlyList<OreColour> Ore, int OreToleranceRgb, int RadiusBlocks = FinderSetup.DefaultRadiusBlocks,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GuardBox? Guard = null)
 {
     public FinderSetup ToSetup(int clientW, int clientH) =>
-        new(Layer, clientW, clientH, Pitch, CenterX, CenterY, RadiusBlocks, Outline, Ore, OreToleranceRgb);
+        new(Layer, clientW, clientH, Pitch, CenterX, CenterY, RadiusBlocks, Outline, Ore, OreToleranceRgb, Guard);
 }
 
 /// <summary>

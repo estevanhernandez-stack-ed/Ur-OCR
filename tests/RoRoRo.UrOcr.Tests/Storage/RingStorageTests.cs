@@ -67,6 +67,28 @@ public class RingStorageTests
     }
 
     [Fact]
+    public void A_finder_s_guard_survives_a_reload()
+    {
+        var path = TempFile();
+        var guard = new GuardBox(55, 289, 3, 3, new Rgb(255, 19, 90), 30);
+        new TriggerStore(path).UpsertRing(Ring() with { Finders = new[] { FinderSetupTests.Valid() with { Guard = guard } } });
+
+        var f = Assert.Single(Assert.Single(new TriggerStore(path).Rings).Finders!);
+
+        Assert.Equal(guard, f.Guard);
+    }
+
+    [Fact]
+    public void A_finder_without_a_guard_writes_no_guard_key()
+    {
+        var path = TempFile();
+        new TriggerStore(path).UpsertRing(Ring() with { Finders = new[] { FinderSetupTests.Valid() } });
+
+        Assert.DoesNotContain("\"guard\"", File.ReadAllText(path));
+        Assert.Null(Assert.Single(Assert.Single(new TriggerStore(path).Rings).Finders!).Guard);
+    }
+
+    [Fact]
     public void A_ring_without_finders_writes_no_finders_key_and_an_old_file_loads()
     {
         var path = TempFile();

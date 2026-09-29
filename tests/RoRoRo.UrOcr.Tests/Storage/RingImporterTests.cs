@@ -35,6 +35,8 @@ public class RingImporterTests
         Outline: new OutlineBox(50, 50), Ore: new[] { new OreColour("cyan crystal", new Rgb(60, 220, 230)) },
         OreToleranceRgb: 40);
 
+    private static GuardBox Guard() => new(55, 289, 3, 3, new Rgb(255, 19, 90), 30);
+
     [Fact]
     public void A_measured_file_from_before_the_finder_loads_and_imports_with_none()
     {
@@ -68,6 +70,33 @@ public class RingImporterTests
         Assert.Equal(new OutlineBox(50, 50, 60, 225), f.Outline);
         Assert.Equal(new OreColour("cyan crystal", new Rgb(60, 220, 230)), Assert.Single(f.Ore));
         Assert.Equal(40, f.OreToleranceRgb);
+    }
+
+    [Fact]
+    public void A_finder_with_no_guard_imports_with_none()
+    {
+        var result = RingImporter.Build(Measured() with { Finders = new[] { Finder() } }, Macros());
+
+        Assert.Null(Assert.Single(result.Ring.Finders!).Guard);
+    }
+
+    [Fact]
+    public void A_finder_s_guard_imports_onto_the_ring_unchanged()
+    {
+        var result = RingImporter.Build(Measured() with { Finders = new[] { Finder() with { Guard = Guard() } } }, Macros());
+
+        Assert.Equal(Guard(), Assert.Single(result.Ring.Finders!).Guard);
+    }
+
+    [Fact]
+    public void A_bad_guard_fails_the_import()
+    {
+        var bad = Finder() with { Guard = Guard() with { X = 798 } };   // 798 + 3 > the 800 px client
+
+        var ex = Assert.Throws<InvalidDataException>(() =>
+            RingImporter.Build(Measured() with { Finders = new[] { bad } }, Macros()));
+
+        Assert.Contains("must sit inside the 800x599 game area", ex.Message);
     }
 
     [Fact]

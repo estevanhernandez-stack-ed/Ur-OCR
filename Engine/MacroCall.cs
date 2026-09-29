@@ -52,10 +52,12 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
 
     /// <summary>One ClearAt for this account: every point in order as one playback, followed through
     /// GetPlayback like a macro. The request is built once, so a busy retry or an interrupted rerun
-    /// sends the same points.</summary>
-    public void BeginClearAt(ClearAtClient size, IReadOnlyList<ClearAtPoint> points, ClearAtOutline outline)
+    /// sends the same points. Guard is the finder's optional pixel guard (live safety bug,
+    /// 2026-09-28), left off the wire when the finder has none.</summary>
+    public void BeginClearAt(ClearAtClient size, IReadOnlyList<ClearAtPoint> points, ClearAtOutline outline,
+        ClearAtGuard? guard = null)
     {
-        var request = BridgeContract.ForClearAt(target, size, points, outline);
+        var request = BridgeContract.ForClearAt(target, size, points, outline, guard: guard);
         Arm(ClearAtLabel(points.Count), ct => client.ClearAtAsync(request, ct));
     }
 

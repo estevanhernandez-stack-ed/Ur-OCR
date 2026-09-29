@@ -1,5 +1,6 @@
 using RoRoRo.UrOcr.Engine;
 using RoRoRo.UrOcr.Ipc;
+using RoRoRo.UrOcr.Storage;
 using Xunit;
 
 namespace RoRoRo.UrOcr.Tests.Engine;
@@ -53,6 +54,31 @@ public class MacroCallTests
         Assert.Equal("ClearAt (3 points)", end.Label);
         Assert.Equal(new[] { "pb1" }, rig.Macros.Polls);
         Assert.False(rig.Call.Active);
+    }
+
+    [Fact]
+    public async Task A_ClearAt_with_a_guard_sends_it_on_the_wire()
+    {
+        var macros = new ScriptedMacros();
+        var clock = new PulseClock();
+        var log = new List<string>();
+        var call = new MacroCall(macros, "42", clock, log.Add);
+        var guard = new ClearAtGuard(55, 289, 3, 3, new Rgb(255, 19, 90), 30);
+        call.BeginClearAt(Size, new[] { new ClearAtPoint(101, 200, "stone 1") }, Outline, guard);
+
+        await call.StepAsync(true, CancellationToken.None);
+
+        Assert.Equal(guard, Assert.Single(macros.ClearAts).Guard);
+    }
+
+    [Fact]
+    public async Task A_ClearAt_with_no_guard_sends_none()
+    {
+        var rig = BuildClearAt(points: 1);
+
+        await Step(rig);
+
+        Assert.Null(Assert.Single(rig.Macros.ClearAts).Guard);
     }
 
     [Fact]
