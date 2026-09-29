@@ -506,7 +506,9 @@ public class PulseLoopFinderTests
     [Fact]
     public async Task A_small_block_keeps_minCount_inside_its_box()
     {
-        var finder = PulseFixtures.Finder() with { Outline = new OutlineBox(50, 50, MinCount: 400) };
+        // Pitch lowered to 20 so a read of 18 stays trusted under the half-the-default rule (Task 12);
+        // this test is only about minCount clamping to the box, not that rule.
+        var finder = PulseFixtures.Finder() with { Pitch = 20, Outline = new OutlineBox(50, 50, MinCount: 400) };
         var rig = Build(PulseFixtures.Ring() with { Finders = new[] { finder } }, Blocks(18));
 
         await FirstRead(rig);
@@ -514,5 +516,46 @@ public class PulseLoopFinderTests
         var req = Assert.Single(rig.Macros.ClearAts);
         Assert.Equal(new ClearAtOutline(18, 18, 324, 225), req.Outline);
         Assert.Contains(rig.Log, l => l == "block size 18 px (read from the frame); outline minCount 324 to fit the 18x18 box");
+    }
+
+    [Fact]
+    public async Task A_read_under_half_the_layer_default_counts_as_unread()
+    {
+        // The layer default is 50 (PulseFixtures.Finder); 18 is under half of it (25), the exact
+        // shape of the live finding: fine crack texture inside the black-layer blocks read as 18-24 px
+        // while the layer's real blocks are 30+ px.
+        var rig = Build(WideRing(), Blocks(18));
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(240, 240, 60, 225), req.Outline);
+        Assert.Equal(16, req.Points.Count(p => p.Label.StartsWith("stone")));
+        Assert.Equal(16, req.Points.Count);
+        Assert.Contains(rig.Log, l => l == "block size 50 px (layer default; read 18 px is under half the default)");
+    }
+
+    [Fact]
+    public async Task A_read_just_over_half_the_default_is_trusted()
+    {
+        var rig = Build(frame: Blocks(26));                  // half of 50 is 25; 26 stays trusted
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(26, 26, 60, 225), req.Outline);
+        Assert.Contains(rig.Log, l => l == "block size 26 px (read from the frame)");
+    }
+
+    [Fact]
+    public async Task A_much_larger_read_is_trusted()
+    {
+        var rig = Build(frame: Blocks(60));                  // only the lower bound is new; larger reads are unaffected
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(60, 60, 60, 225), req.Outline);
+        Assert.Contains(rig.Log, l => l == "block size 60 px (read from the frame)");
     }
 }

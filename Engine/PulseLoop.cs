@@ -300,21 +300,30 @@ public sealed class PulseLoop
     /// the first wall, so the block size is read off the calm frame and sets the grid, the reach and
     /// the outline box (w = h = the block, 16 to 240). A frame with no clear pattern falls back to the
     /// layer's measured pitch for the grid, with the largest box (240) and only the nearest stone points:
-    /// a camera jammed against the character shows blocks far bigger than the default. The frame may be
-    /// another size than the measured client: the centre is scaled into it and the block scaled back to
-    /// measured pixels.</summary>
+    /// a camera jammed against the character shows blocks far bigger than the default. A read under half
+    /// the layer's measured pitch counts as unread too (Task 12 live finding): the fine crack texture
+    /// inside a block reads as a much smaller, spurious pitch than the block itself; only this lower
+    /// bound distrusts a read, a larger one is still trusted. The frame may be another size than the
+    /// measured client: the centre is scaled into it and the block scaled back to measured pixels.</summary>
     private FinderSetup ForPass(FramePixels frame, FinderSetup f)
     {
         var (sx, sy) = Scale(frame, f);
         var read = PitchEstimator.Estimate(frame, (int)Math.Round(f.CenterX * sx), (int)Math.Round(f.CenterY * sy));
-        var pitch = read is null
-            ? f.Pitch
+        var readPitch = read is null
+            ? (int?)null
             : Math.Max(FinderSetup.MinPitch, (int)Math.Round(read.Pitch * 2 / (sx + sy), MidpointRounding.AwayFromZero));
-        _pitchUnread = read is null;
+        var tooSmall = readPitch is { } rp && rp < f.Pitch / 2;
+        _pitchUnread = read is null || tooSmall;
+        var pitch = _pitchUnread ? f.Pitch : readPitch!.Value;
         var side = _pitchUnread ? FinderSetup.MaxOutlineSide : Math.Clamp(pitch, MinOutlineSide, FinderSetup.MaxOutlineSide);
         var minCount = Math.Min(f.Outline.MinCount, side * side);
 
-        var line = $"block size {pitch} px ({(read is null ? "layer default; no clear pattern" : "read from the frame")})";
+        var reason = read is null
+            ? "layer default; no clear pattern"
+            : tooSmall
+                ? $"layer default; read {readPitch!.Value} px is under half the default"
+                : "read from the frame";
+        var line = $"block size {pitch} px ({reason})";
         if (minCount < f.Outline.MinCount) line += $"; outline minCount {minCount} to fit the {side}x{side} box";
         if (line != _blockLogged) _log(line);
         _blockLogged = line;

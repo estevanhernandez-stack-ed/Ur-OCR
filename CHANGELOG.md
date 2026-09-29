@@ -22,6 +22,7 @@
 ### Fixed
 
 - The ore finder never aims at the game's buttons (the bottom bar, the left column, the top bar). A spot on the inventory button once opened the menu and stopped the pulse.
+- A block size read at under half the layer's usual size is treated as unread (it was the texture inside the blocks).
 
 ### Notes
 
