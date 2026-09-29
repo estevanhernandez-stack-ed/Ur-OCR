@@ -60,6 +60,28 @@ public class PulseImportCommandTests : IDisposable
     }
 
     [Fact]
+    public void Without_a_camera_turn_macro_the_report_says_the_pulse_will_not_look_around()
+    {
+        WriteMacros();
+
+        Assert.Equal(0, Run(() => false, WritePulses()));
+
+        Assert.Contains("no Camera turn left macro: the pulse won't look around", File.ReadAllText(Report));
+    }
+
+    [Fact]
+    public void With_a_camera_turn_macro_the_report_says_nothing_about_it()
+    {
+        WriteMacros();
+        File.WriteAllText(Path.Combine(MacrosDir, "id-turn.json"), JsonSerializer.Serialize(new { id = "id-turn", name = "Camera turn left" }));
+
+        Assert.Equal(0, Run(() => false, WritePulses()));
+
+        Assert.DoesNotContain("Camera turn left", File.ReadAllText(Report));
+        Assert.All(new TriggerStore(Triggers).Pulses, p => Assert.Equal("id-turn", p.Macros!.CameraTurnLeft));
+    }
+
+    [Fact]
     public void Refuses_while_Ur_OCR_is_running()
     {
         WriteMacros();

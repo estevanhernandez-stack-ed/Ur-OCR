@@ -96,6 +96,31 @@ public class PulseStorageTests
     }
 
     [Fact]
+    public void The_camera_turn_macro_survives_a_reload_and_an_older_file_loads_without_it()
+    {
+        var path = TempFile();
+        new TriggerStore(path).UpsertPulse(Pulse() with { Macros = Macros() with { CameraTurnLeft = "id-turn" } });
+        Assert.Equal("id-turn", Assert.Single(new TriggerStore(path).Pulses).Macros!.CameraTurnLeft);
+
+        var old = TempFile();
+        File.WriteAllText(old,
+            "{\"schemaVersion\":2,\"rings\":[],\"triggers\":[],\"pulses\":[{\"accountUserId\":42,\"ringId\":\"mine8\",\"targetLayer\":2," +
+            "\"macros\":{\"autoMineOff\":\"a\",\"autoMineOn\":\"b\",\"goToTop\":\"c\",\"clear\":[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\"]}}]}");
+        var m = Assert.Single(new TriggerStore(old).Pulses).Macros!;
+        Assert.Equal("c", m.GoToTop);
+        Assert.Null(m.CameraTurnLeft);
+    }
+
+    [Fact]
+    public void Without_a_camera_turn_macro_no_key_is_written()
+    {
+        var path = TempFile();
+        new TriggerStore(path).UpsertPulse(Pulse());
+
+        Assert.DoesNotContain("cameraTurnLeft", File.ReadAllText(path), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void UpsertPulse_replaces_the_same_accounts_pulse()
     {
         var store = new TriggerStore(TempFile());

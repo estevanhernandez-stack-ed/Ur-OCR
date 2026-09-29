@@ -9,8 +9,11 @@ namespace RoRoRo.UrOcr.Storage;
 public enum PulseMode { Top, OneAbove }
 
 /// <summary>Ur Task macro ids the loop runs, resolved from names at import. Clear holds one id per
-/// ring spot, index = ring order (N, NE, E, SE, S, SW, W, NW).</summary>
-public sealed record PulseMacros(string AutoMineOff, string AutoMineOn, string GoToTop, IReadOnlyList<string> Clear);
+/// ring spot, index = ring order (N, NE, E, SE, S, SW, W, NW). CameraTurnLeft is optional: null (not
+/// in Ur Task, or a file from before it) and a pass with nothing in reach rides a burst without
+/// looking around first.</summary>
+public sealed record PulseMacros(string AutoMineOff, string AutoMineOn, string GoToTop, IReadOnlyList<string> Clear,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CameraTurnLeft = null);
 
 /// <summary>
 /// One account's ore stop pulse (spec 2026-09-28, "Settings per account"). TargetLayer counts the
@@ -43,6 +46,8 @@ public static class PulseMacroNames
     public const string AutoMineOff = "Auto Mine off (checked)";
     public const string AutoMineOn = "Auto Mine on (checked)";
     public const string GoToTop = "Go to Top";
+    /// <summary>Optional: a quarter turn of the camera, the character staying centred.</summary>
+    public const string CameraTurnLeft = "Camera turn left";
     public static string Clear(string spot) => $"Clear spot {spot}";
 }
 

@@ -4,7 +4,7 @@ using RoRoRo.UrOcr.Storage;
 
 namespace RoRoRo.UrOcr.Engine;
 
-public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTop, Stopped }
+public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTop, Turning, Stopped }
 
 /// <summary>
 /// One account's ore stop pulse (spec 2026-09-28). Riding: Auto Mine on for BurstMs. Pausing: Auto
@@ -14,8 +14,9 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// At it: Clearing. With an ore finder for the aim layer, one ClearAt call carries the finder's points
 /// (ore patches, then a block grid) from a calm frame; without one, one Clear spot per ring spot,
 /// ore first. Ur Task skips a point or spot with no outline. A pass that cleared something settles and
-/// reads again; a pass that cleared nothing rides a burst (Bursting) first, twice as long for each such
-/// pass in a row (RideLonger). RockCapMinutes on one
+/// reads again; a pass that cleared nothing first turns the camera (Turning, "Camera turn left", then
+/// SettleMs and a read) up to MaxTurns times since the last progress, then rides a burst (Bursting),
+/// twice as long for each such burst in a row (RideLonger). RockCapMinutes on one
 /// aim layer with nothing cleared (time behind or paused not counted): Go to Top. Each tick does
 /// everything it can and returns at the first wait. Nothing starts unless the account is in front,
 /// read again right before each macro; a playback already started is still followed.
@@ -30,6 +31,9 @@ public sealed class PulseLoop
     public const int MaxBurstMs = 30000;
     /// <summary>Stone points checked when the block size could not be read off the frame.</summary>
     public const int UnreadStonePoints = 16;
+    /// <summary>Camera turns after passes with nothing in reach before a burst: a quarter turn each,
+    /// so three more angles and the full circle looked at.</summary>
+    public const int MaxTurns = 3;
 
     private readonly PulseConfig _config;
     private readonly RingDefinition? _ring;
@@ -58,6 +62,7 @@ public sealed class PulseLoop
     private DateTimeOffset? _behindSince;  // first tick behind (or held), for the rock cap
     private int _emptyPasses;              // passes in a row with nothing in reach, for the growing burst
     private int _burstMs;                  // this Bursting state's ride
+    private int _turns;                    // camera turns since the last progress (cleared pass, new layer, Go to Top, burst)
 
     public PulseLoop(PulseConfig config, IReadOnlyList<RingDefinition> rings, IReadOnlyList<Trigger> triggers,
         ISpotReader reader, IMacroRunClient macros, IClock clock, Action<string> log)
@@ -147,7 +152,12 @@ public sealed class PulseLoop
                 if (!_macroDone) return Begin(M.GoToTop, PulseMacroNames.GoToTop);
                 Layer = null;              // back at the top: the rock cap starts over
                 _emptyPasses = 0;          // and so does the growing burst
+                _turns = 0;                // and the looking around
                 return Enter(PulseState.Riding);
+
+            case PulseState.Turning:
+                if (!_macroDone) return Begin(M.CameraTurnLeft!, PulseMacroNames.CameraTurnLeft);
+                return now >= _until && Enter(PulseState.Reading);
 
             default:
                 return false;
@@ -243,6 +253,7 @@ public sealed class PulseLoop
         {
             Layer = layer;
             _progressAt = now;
+            _turns = 0;
         }
         var number = LayerNumber(layer);
         var aim = _config.AimLayer;
@@ -337,19 +348,36 @@ public sealed class PulseLoop
             if (_cleared.Count > 0)
             {
                 _emptyPasses = 0;
+                _turns = 0;
                 _log($"cleared at the ore finder's points ({targets.Count} tried): reading again");
                 return Enter(PulseState.Pausing, macroDone: true);   // Auto Mine is still off: just settle
             }
-            return RideLonger($"nothing in reach to clear (all {targets.Count} points skipped)");
+            return NothingInReach($"nothing in reach to clear (all {targets.Count} points skipped)");
         }
         if (_cleared.Count > 0)
         {
             _emptyPasses = 0;
+            _turns = 0;
             var skipped = _skipped.Count > 0 ? $"; nothing to clear at {string.Join(" ", _skipped)}" : "";
             _log($"cleared {string.Join(" ", _cleared)}{skipped}: reading again");
             return Enter(PulseState.Pausing, macroDone: true);   // Auto Mine is still off: just settle
         }
-        return RideLonger($"nothing in reach to clear ({_skipped.Count} spots skipped)");
+        return NothingInReach($"nothing in reach to clear ({_skipped.Count} spots skipped)");
+    }
+
+    /// <summary>A pass with nothing in reach usually means a jammed camera or faces turned away, not an
+    /// empty area: turn the camera and read again, up to MaxTurns times, then ride a burst and start
+    /// the turns over. Without a Camera turn left macro it rides the burst straight away.</summary>
+    private bool NothingInReach(string why)
+    {
+        if (M.CameraTurnLeft is not null && _turns < MaxTurns)
+        {
+            _turns++;
+            _log($"{why}: turning the camera ({_turns} of {MaxTurns})");
+            return Enter(PulseState.Turning);
+        }
+        _turns = 0;
+        return RideLonger(why);
     }
 
     /// <summary>A pass with nothing in reach rides a burst twice as long as the last one in a row
@@ -441,6 +469,7 @@ public sealed class PulseLoop
         PulseState.Riding => _clock.Now.AddMilliseconds(_config.BurstMs),
         PulseState.Bursting => _clock.Now.AddMilliseconds(_burstMs),
         PulseState.Pausing => _clock.Now.AddMilliseconds(_config.SettleMs),
+        PulseState.Turning => _clock.Now.AddMilliseconds(_config.SettleMs),
         _ => null,
     };
 
@@ -449,8 +478,9 @@ public sealed class PulseLoop
         // Riding/Bursting run Auto Mine on; Pausing runs Auto Mine off, but a stop there always
         // catches that macro mid-flight (_macroDone is only ever true entering Reading, which
         // never stops), so it groups with "may still be on" too, same as a Go to Top in flight.
-        // Reading and Clearing always start after Auto Mine off has completed, so it is off.
-        var autoMine = State is PulseState.Reading or PulseState.Clearing
+        // Reading, Clearing and Turning (only ever entered from Clearing) always start after Auto
+        // Mine off has completed, so it is off.
+        var autoMine = State is PulseState.Reading or PulseState.Clearing or PulseState.Turning
             ? "Auto Mine is off."
             : "Auto Mine may still be on.";
         var full = $"{reason} {autoMine}";

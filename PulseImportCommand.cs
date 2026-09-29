@@ -48,6 +48,8 @@ internal static class PulseImportCommand
                 var pulses = PulseImporter.Apply(store, file, macros);   // builds first: a bad file writes nothing
                 lines.Add($"imported {pulses.Count} pulse loop{(pulses.Count == 1 ? "" : "s")} into {triggersPath}");
                 foreach (var p in pulses) lines.Add("  " + Describe(p));
+                if (pulses.Any(p => p.Macros?.CameraTurnLeft is null))
+                    lines.Add($"no {PulseMacroNames.CameraTurnLeft} macro: the pulse won't look around");
                 code = 0;
             }
             catch (Exception ex) when (ex is InvalidDataException or JsonException or IOException or UnauthorizedAccessException)

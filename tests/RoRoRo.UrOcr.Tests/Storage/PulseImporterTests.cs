@@ -108,4 +108,33 @@ public class PulseImporterTests
         var p = Assert.Single(store.Pulses);
         Assert.Equal(1, p.TargetLayer);
     }
+
+    [Fact]
+    public void The_camera_turn_macro_is_looked_up_when_it_is_there()
+    {
+        var macros = Macros().Append(new UrTaskMacro("id-turn", "Camera turn left")).ToList();
+
+        var p = Assert.Single(Build(StoreWithRing(), macros, Entry()));
+
+        Assert.Equal("id-turn", p.Macros!.CameraTurnLeft);
+    }
+
+    [Fact]
+    public void Without_a_camera_turn_macro_the_pulse_still_imports()
+    {
+        var p = Assert.Single(Build(StoreWithRing(), null, Entry()));
+
+        Assert.Null(p.Macros!.CameraTurnLeft);
+    }
+
+    [Fact]
+    public void Two_camera_turn_macros_are_refused_by_name()
+    {
+        var macros = Macros().Append(new UrTaskMacro("id-turn", "Camera turn left"))
+            .Append(new UrTaskMacro("id-turn-2", "Camera turn left")).ToList();
+
+        var ex = Assert.Throws<InvalidDataException>(() => Build(StoreWithRing(), macros, Entry()));
+
+        Assert.Contains("Camera turn left", ex.Message);
+    }
 }

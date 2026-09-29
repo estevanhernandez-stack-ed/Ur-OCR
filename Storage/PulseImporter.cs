@@ -41,10 +41,14 @@ public static class PulseImporter
         return pulses;
     }
 
-    /// <summary>Every macro the loop runs, by name, exactly one each (RingImporter.ResolveMacro rules).</summary>
+    /// <summary>Every macro the loop runs, by name, exactly one each (RingImporter.ResolveMacro rules).
+    /// The camera turn is optional: missing is null, two of that name are refused.</summary>
     public static PulseMacros Resolve(IReadOnlyList<UrTaskMacro> macros) => new(
         RingImporter.ResolveMacro(macros, PulseMacroNames.AutoMineOff),
         RingImporter.ResolveMacro(macros, PulseMacroNames.AutoMineOn),
         RingImporter.ResolveMacro(macros, PulseMacroNames.GoToTop),
-        MeasuredRing.RingOrder.Select(n => RingImporter.ResolveMacro(macros, PulseMacroNames.Clear(n))).ToList());
+        MeasuredRing.RingOrder.Select(n => RingImporter.ResolveMacro(macros, PulseMacroNames.Clear(n))).ToList(),
+        macros.Any(x => string.Equals(x.Name, PulseMacroNames.CameraTurnLeft, StringComparison.OrdinalIgnoreCase))
+            ? RingImporter.ResolveMacro(macros, PulseMacroNames.CameraTurnLeft)
+            : null);
 }
