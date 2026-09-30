@@ -13,6 +13,9 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
+  <PropertyGroup>
+    <RoRoRoHostDir Condition="'$(RoRoRoHostDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\ROROROblox</RoRoRoHostDir>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
@@ -27,8 +30,10 @@
     <!-- ur-ocr plugin — gives us PluginClient, AccountRegistry, HeaderInjectingCallInvoker -->
     <ProjectReference Include="..\..\rororo-ur-ocr.csproj" />
     <!-- Host app — gives us PluginHostService, PluginHostStartupService, InProcessPluginEventBus, etc.
-         Path: 4 levels up lands at c:\Users\estev\Projects\ then into ROROROblox repo. -->
-    <ProjectReference Include="..\..\..\..\ROROROblox\src\ROROROblox.App\ROROROblox.App.csproj" />
-    <ProjectReference Include="..\..\..\..\ROROROblox\src\ROROROblox.PluginContract\ROROROblox.PluginContract.csproj" />
+         The host checkout sits beside this repo (<parent>\Ur-OCR, <parent>\ROROROblox): three levels
+         up from this folder. Build against another checkout (a worktree at a given host commit) with
+         -p:RoRoRoHostDir=<absolute path>. -->
+    <ProjectReference Include="$(RoRoRoHostDir)\src\ROROROblox.App\ROROROblox.App.csproj" />
+    <ProjectReference Include="$(RoRoRoHostDir)\src\ROROROblox.PluginContract\ROROROblox.PluginContract.csproj" />
   </ItemGroup>
 </Project>

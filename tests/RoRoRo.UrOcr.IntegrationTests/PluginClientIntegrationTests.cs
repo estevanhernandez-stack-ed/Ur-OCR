@@ -364,8 +364,18 @@ public sealed class PluginClientIntegrationTests
 
     private sealed class NoOpLauncher : IPluginLaunchInvoker
     {
-        public Task<(bool ok, string? failureReason, int processId)> RequestLaunchAsync(string accountId)
-            => Task.FromResult<(bool, string?, int)>((false, "test stub", 0));
+        // RoRoRo v1.32 (host PR #223) added a machine-readable reasonCode to both launch results.
+        public Task<(bool ok, string? failureReason, int processId, string? reasonCode)> RequestLaunchAsync(string accountId)
+            => Task.FromResult<(bool, string?, int, string?)>((false, "test stub", 0, null));
+
+        // The host's IPluginLaunchInvoker grew launch-to-target and current-server queries in
+        // RoRoRo v1.7.0.0; this stand-in never had them. Mirrors Ur Task's stub.
+        public Task<(bool ok, string? failureReason, int processId, string? reasonCode)> RequestLaunchTargetAsync(
+            string accountId, string? shareUrl, long? followUserId)
+            => Task.FromResult<(bool, string?, int, string?)>((false, "test stub", 0, null));
+
+        public Task<CurrentServerInfo?> GetCurrentServerAsync()
+            => Task.FromResult<CurrentServerInfo?>(null);
     }
 
     private sealed class NullUIHost : IPluginUIHost
