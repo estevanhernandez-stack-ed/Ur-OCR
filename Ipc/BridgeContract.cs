@@ -47,6 +47,19 @@ public sealed record ClearAtRequest(string ContractVersion, string Method, strin
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? MaxMsPerPoint,
     ClearAtGuard? Guard = null);
 
+/// <summary>One SweepPath point in pixels of <see cref="ClearAtClient"/>.</summary>
+public sealed record SweepPoint(int X, int Y);
+
+/// <summary>
+/// Ur Task's SweepPath (bridge 1.x, additive, Ur Task 0.12.0): one continuous left-button hold along
+/// Path, which starts and ends on the start block beside the character and moves a whole number of
+/// Step px at a time. Ur Task dwells DwellMs at every point but the last, samples Guard every few
+/// points while held, and lets go only on Path[0]. Answered with a RunMacroResponse and followed
+/// with GetPlayback like a macro.
+/// </summary>
+public sealed record SweepPathRequest(string ContractVersion, string Method, string CallerPluginId, string Target,
+    ClearAtClient Client, IReadOnlyList<SweepPoint> Path, int Step, int DwellMs, ClearAtGuard Guard);
+
 /// <summary>Reason codes on the bridge, Ur Task's and Ur OCR's own synthetic ones.</summary>
 public static class BridgeReasons
 {
@@ -79,6 +92,9 @@ public static class BridgeContract
     public const string MethodClearAt = "ClearAt";
     /// <summary>Ur Task refuses a ClearAt with more points than this (or none).</summary>
     public const int MaxClearAtPoints = 64;
+    public const string MethodSweepPath = "SweepPath";
+    /// <summary>Ur Task refuses a SweepPath with more points than this (or fewer than 3).</summary>
+    public const int MaxSweepPoints = 256;
     public const string CallerId = "626labs.ur-ocr";
     public const string ContractVersion = "1.0";
 
@@ -100,4 +116,8 @@ public static class BridgeContract
     public static ClearAtRequest ForClearAt(string target, ClearAtClient client, IReadOnlyList<ClearAtPoint> points,
         ClearAtOutline outline, int? maxMsPerPoint = null, ClearAtGuard? guard = null)
         => new(ContractVersion, MethodClearAt, CallerId, target, client, points, outline, maxMsPerPoint, guard);
+
+    public static SweepPathRequest ForSweepPath(string target, ClearAtClient client, IReadOnlyList<SweepPoint> path,
+        int step, int dwellMs, ClearAtGuard guard)
+        => new(ContractVersion, MethodSweepPath, CallerId, target, client, path, step, dwellMs, guard);
 }

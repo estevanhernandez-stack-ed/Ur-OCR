@@ -445,4 +445,23 @@ public class MacroCallTests
 
         Assert.Equal(2, rig.Log.Count(l => l.Contains("ack-timeout")));
     }
+
+    [Fact]
+    public async Task A_sweep_starts_on_the_account_and_is_followed_through_GetPlayback()
+    {
+        var macros = new ScriptedMacros();
+        var call = new MacroCall(macros, "42", new PulseClock(), _ => { });
+        var path = new[] { new SweepPoint(450, 300), new SweepPoint(450, 250), new SweepPoint(450, 300) };
+        var guard = new ClearAtGuard(55, 289, 3, 3, new Rgb(255, 19, 90), 30);
+        call.BeginSweep(Size, path, 50, 400, guard);
+
+        Assert.Equal(CallStatus.Waiting, (await call.StepAsync(true, CancellationToken.None)).Status);
+        var req = Assert.Single(macros.Sweeps);
+        Assert.Equal(("SweepPath", "42", Size, 50, 400, guard), (req.Method, req.Target, req.Client, req.Step, req.DwellMs, req.Guard));
+        Assert.Equal(path, req.Path);
+
+        var end = await call.StepAsync(true, CancellationToken.None);
+        Assert.Equal((CallStatus.Done, "SweepPath (3 points)"), (end.Status, end.Label));
+        Assert.Equal(new[] { ScriptedMacros.SweepId }, macros.RunIds);
+    }
 }

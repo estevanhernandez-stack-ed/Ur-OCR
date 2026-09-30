@@ -23,4 +23,11 @@ public interface IMacroRunClient
     Task<RunMacroResponse> ClearAtAsync(ClearAtRequest request, CancellationToken ct)
         => Task.FromResult(new RunMacroResponse(false, null, false, BridgeReasons.Refused,
             "This client cannot ask Ur Task to clear at points."));
+
+    /// <summary>Ur Task's SweepPath: one held-button walk as one playback, followed with
+    /// GetPlaybackAsync. The default refuses so a client that cannot send it (the trigger tests'
+    /// fakes) still compiles; MacroRunClient sends it.</summary>
+    Task<RunMacroResponse> SweepPathAsync(SweepPathRequest request, CancellationToken ct)
+        => Task.FromResult(new RunMacroResponse(false, null, false, BridgeReasons.Refused,
+            "This client cannot ask Ur Task to sweep."));
 }

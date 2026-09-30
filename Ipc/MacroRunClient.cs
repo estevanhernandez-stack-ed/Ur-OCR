@@ -44,6 +44,14 @@ public sealed class MacroRunClient : IMacroRunClient
             "ClearAt sent; Ur Task did not ack within the tick window.",
             ct);
 
+    /// <summary>One SweepPath playback. Ur Task acks with a playback id or a refusal: busy, a bad
+    /// path, or "Unknown method 'SweepPath'." from an Ur Task older than 0.12.0.</summary>
+    public Task<RunMacroResponse> SweepPathAsync(SweepPathRequest request, CancellationToken ct) =>
+        ExchangeAsync(request,
+            (reason, detail) => new RunMacroResponse(false, null, false, reason, detail),
+            "SweepPath sent; Ur Task did not ack within the tick window.",
+            ct);
+
     /// <summary>One request, one response, one connection. Never throws: a missing Ur Task, a closed
     /// pipe or a cancelled wait each come back as a refusal built by <paramref name="fail"/>.</summary>
     private async Task<TResponse> ExchangeAsync<TRequest, TResponse>(

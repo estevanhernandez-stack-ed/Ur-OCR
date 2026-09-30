@@ -47,6 +47,20 @@ internal sealed class ScriptedMacros : IMacroRunClient
         return Task.FromResult(ClearAtReplies.Dequeue());
     }
 
+    /// <summary>The id a SweepPath playback is listed under in Runs and scripted with in Script.</summary>
+    public const string SweepId = "sweep-path";
+    public List<SweepPathRequest> Sweeps { get; } = new();
+    /// <summary>Answers to SweepPath, used before RunReplies and the default accept.</summary>
+    public Queue<RunMacroResponse> SweepReplies { get; } = new();
+
+    public Task<RunMacroResponse> SweepPathAsync(SweepPathRequest request, CancellationToken ct)
+    {
+        Sweeps.Add(request);
+        if (SweepReplies.Count == 0) return RunAsync(SweepId, new[] { request.Target }, null, ct);
+        Runs.Add((SweepId, new[] { request.Target }, null));
+        return Task.FromResult(SweepReplies.Dequeue());
+    }
+
     private readonly Dictionary<string, Queue<GetPlaybackResponse>> _scripts = new();
     private readonly Dictionary<string, string> _macroOf = new();
     private int _next;

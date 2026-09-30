@@ -64,6 +64,17 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
     /// <summary>The name Ur Task's log gives a ClearAt playback.</summary>
     public static string ClearAtLabel(int points) => $"ClearAt ({points} {(points == 1 ? "point" : "points")})";
 
+    /// <summary>One SweepPath for this account, followed through GetPlayback like a macro. The request
+    /// is built once, so a busy retry or an interrupted rerun sends the same path.</summary>
+    public void BeginSweep(ClearAtClient size, IReadOnlyList<SweepPoint> path, int step, int dwellMs, ClearAtGuard guard)
+    {
+        var request = BridgeContract.ForSweepPath(target, size, path, step, dwellMs, guard);
+        Arm(SweepLabel(path.Count), ct => client.SweepPathAsync(request, ct));
+    }
+
+    /// <summary>The name Ur Task's log gives a SweepPath playback.</summary>
+    public static string SweepLabel(int points) => $"SweepPath ({points} {(points == 1 ? "point" : "points")})";
+
     private void Arm(string label, Func<CancellationToken, Task<RunMacroResponse>> start)
     {
         _start = start;
