@@ -71,11 +71,13 @@ public class PulseLoopOreSweepTests
 
     private static bool Near(ClearAtPoint p, (int X, int Y, int W, int H, Rgb Colour) crystal) => Near(new SweepPoint(p.X, p.Y), crystal);
 
-    /// <summary>A mark on a stone block the stone sweep went over, so the next read counts a change.</summary>
-    private static (int X, int Y, int W, int H, Rgb Colour) Broken(int k)
+    /// <summary>Marks on a quarter of the stone blocks the stone sweep went over, clear of the crystals,
+    /// so the next read counts more change than noise (SweepChange.NoiseShare).</summary>
+    private static (int X, int Y, int W, int H, Rgb Colour)[] BrokenStone(params (int X, int Y, int W, int H, Rgb Colour)[] keep)
     {
-        var p = StonePath()[k];
-        return (p.X - 4, p.Y - 4, 8, 8, PulseFixtures.Black);
+        var path = StonePath();
+        return path.Skip(1).Where(p => !keep.Any(c => Near(p, c))).Take(path.Count / 4)
+            .Select(p => (p.X - 4, p.Y - 4, 8, 8, PulseFixtures.Black)).ToArray();
     }
 
     [Fact]
@@ -133,7 +135,7 @@ public class PulseLoopOreSweepTests
         await FirstRead(rig);
         var swept = rig.Macros.Sweeps[0].Path.Count(p => Near(p, East) || Near(p, West)) - 1;
 
-        await FinishPassAndRead(rig, Grey(East, West, Broken(3)));   // the stone changed, the ore did not
+        await FinishPassAndRead(rig, Grey(new[] { East, West }.Concat(BrokenStone(East, West)).ToArray()));   // the stone changed, the ore did not
 
         var clear = Assert.Single(rig.Macros.ClearAts);
         Assert.Equal(swept, clear.Points.Count);
@@ -152,7 +154,7 @@ public class PulseLoopOreSweepTests
 
         var north1 = (393, 265, 24, 24, PulseFixtures.Cyan);
         var north2 = (425, 265, 24, 24, PulseFixtures.Cyan);
-        await FinishPassAndRead(rig, Grey(West, north1, north2, Broken(3)));
+        await FinishPassAndRead(rig, Grey(new[] { West, north1, north2 }.Concat(BrokenStone(East, West, north1, north2)).ToArray()));
 
         var oreSweep = rig.Macros.Sweeps[2];
         Assert.True(oreSweep.FreePath);
@@ -191,7 +193,7 @@ public class PulseLoopOreSweepTests
         var ore = rig.Macros.Sweeps[0].Path;
         var west = ore.First(p => Near(p, West));
 
-        await FinishPassAndRead(rig, Grey(East, (west.X - 6, west.Y - 6, 12, 12, PulseFixtures.Black)));
+        await FinishPassAndRead(rig, Grey(new[] { East, (west.X - 6, west.Y - 6, 12, 12, PulseFixtures.Black) }.Concat(BrokenStone(East, West)).ToArray()));
 
         var points = SweepChange.Points(StonePath().Concat(ore).ToList());
         Assert.DoesNotContain(rig.Log, l => l.StartsWith("the sweep broke nothing"));
@@ -216,7 +218,7 @@ public class PulseLoopOreSweepTests
 
         await Tick(rig);                     // settle, then the next pass: refused again, logged once
         rig.Macros.SweepReplies.Enqueue(ScriptedMacros.Refusal(BridgeReasons.Refused));
-        rig.Reader.Frame = Grey(East, West, Broken(3));
+        rig.Reader.Frame = Grey(new[] { East, West }.Concat(BrokenStone(East, West)).ToArray());
         rig.Clock.Advance(1000);
         await Tick(rig);
 

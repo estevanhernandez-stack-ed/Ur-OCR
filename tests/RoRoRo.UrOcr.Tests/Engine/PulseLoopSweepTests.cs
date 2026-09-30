@@ -47,6 +47,14 @@ public class PulseLoopSweepTests
 
     private static Task Tick(Rig r) => r.Loop.TickAsync(true, 7, CancellationToken.None);
 
+    /// <summary>A size-by-size mark on each of the first <paramref name="n"/> swept blocks (the start
+    /// left out), so the next read counts them changed.</summary>
+    private static (int X, int Y, int W, int H, Rgb Colour)[] Marks(IReadOnlyList<SweepPoint> path, int n, int size = 8) =>
+        path.Skip(1).Distinct().Take(n).Select(p => (p.X - size / 2, p.Y - size / 2, size, size, PulseFixtures.Black)).ToArray();
+
+    /// <summary>More swept blocks than noise (SweepChange.NoiseShare): a quarter of them.</summary>
+    private static int Real(IReadOnlyList<SweepPoint> path) => SweepChange.Points(path) / 4;
+
     /// <summary>Auto Mine on, ride 2 s, Auto Mine off, settle 1 s, read: the pass's first call started.</summary>
     private static async Task FirstRead(Rig r)
     {
@@ -137,12 +145,11 @@ public class PulseLoopSweepTests
         Assert.Equal(PulseState.Pausing, rig.Loop.State);
         Assert.Contains(rig.Log, l => l == $"swept {path.Count} points: reading again");
 
-        rig.Reader.Frame = Grey((path[1].X - 4, path[1].Y - 4, 8, 8, PulseFixtures.Black),
-                                (path[2].X - 4, path[2].Y - 4, 8, 8, PulseFixtures.Black));
+        rig.Reader.Frame = Grey(Marks(path, Real(path)));
         rig.Clock.Advance(1000);
         await Tick(rig);                     // read: judged, then the next pass sweeps
 
-        Assert.Contains(rig.Log, l => l == $"the sweep changed 2 of {SweepChange.Points(path)} points");
+        Assert.Contains(rig.Log, l => l == $"the sweep changed {Real(path)} of {SweepChange.Points(path)} points");
         Assert.Equal(PulseState.Clearing, rig.Loop.State);
         Assert.Equal(2, rig.Macros.Sweeps.Count);
     }
@@ -161,6 +168,26 @@ public class PulseLoopSweepTests
         Assert.Contains(rig.Log, l => l == $"the sweep broke nothing (0 of {SweepChange.Points(PathFor())} points changed): riding a burst");
         Assert.Single(rig.Macros.Sweeps);
         Assert.Equal("id-on", rig.Macros.RunIds.Last());
+    }
+
+    [Fact]
+    public async Task A_sweep_that_changed_only_noise_broke_nothing()
+    {
+        // Live 2026-09-30: on the mine floor sparkles and popups moved 3 of 43 boxes every pass, which
+        // counted as progress and held the pulse there for twelve minutes.
+        var rig = Build(Grey());
+        var path = PathFor();
+        await FirstRead(rig);
+        await Tick(rig);                     // the sweep finished: settle
+
+        var noise = (int)(SweepChange.Points(path) * SweepChange.NoiseShare);
+        rig.Reader.Frame = Grey(Marks(path, noise));
+        rig.Clock.Advance(1000);
+        await Tick(rig);
+
+        Assert.Equal(PulseState.Bursting, rig.Loop.State);
+        Assert.Contains(rig.Log, l => l == $"the sweep broke nothing ({noise} of {SweepChange.Points(path)} points changed): riding a burst");
+        Assert.Single(rig.Macros.Sweeps);
     }
 
     [Fact]
@@ -363,7 +390,7 @@ public class PulseLoopSweepTests
         await FirstRead(rig);
         await Tick(rig);                     // the sweep finished: settle
 
-        rig.Reader.Frame = PulseFixtures.Calm((path[1].X - 30, path[1].Y - 30, 60, 60, PulseFixtures.Black));
+        rig.Reader.Frame = PulseFixtures.Calm(Marks(path, Real(path), 60));
         rig.Clock.Advance(1000);
         await Tick(rig);                     // judged, then the next pass sweeps at 160 again
 
@@ -381,12 +408,13 @@ public class PulseLoopSweepTests
         await FirstRead(rig);
         await Tick(rig);                     // the sweep finished: settle
 
-        rig.Reader.Frame = PulseFixtures.Calm((path[1].X - 30, path[1].Y - 30, 60, 60, PulseFixtures.Black),
-                                              (path[2].X - 4, path[2].Y - 4, 8, 8, PulseFixtures.Black));
+        var big = Real(path);
+        var small = Marks(path, big + 1)[big];   // one more swept block, marked too small to count
+        rig.Reader.Frame = PulseFixtures.Calm(Marks(path, big, 60).Append(small).ToArray());
         rig.Clock.Advance(1000);
         await Tick(rig);
 
-        Assert.Contains(rig.Log, l => l == $"the sweep changed 1 of {SweepChange.Points(path)} points");
+        Assert.Contains(rig.Log, l => l == $"the sweep changed {big} of {SweepChange.Points(path)} points");
     }
 
     [Fact]

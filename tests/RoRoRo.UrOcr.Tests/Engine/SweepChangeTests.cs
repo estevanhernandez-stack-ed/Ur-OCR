@@ -59,4 +59,14 @@ public class SweepChangeTests
 
         Assert.Equal((2, 3), (SweepChange.Points(Path), SweepChange.Points(detoured)));
     }
+
+    [Theory]
+    [InlineData(0, 43, false)]
+    [InlineData(3, 43, false)]    // the Mine #8 floor, live 2026-09-30: twelve minutes of the same pass
+    [InlineData(4, 40, false)]
+    [InlineData(5, 40, true)]
+    [InlineData(22, 32, true)]    // a real pass on the way down
+    [InlineData(1, 2, true)]      // a short path: one block is more than noise
+    public void Only_more_change_than_noise_counts_as_broken(int changed, int points, bool broke)
+        => Assert.Equal(broke, SweepChange.Broke(changed, points));
 }

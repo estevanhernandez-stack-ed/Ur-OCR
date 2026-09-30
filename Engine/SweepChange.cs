@@ -17,6 +17,15 @@ public static class SweepChange
 {
     public const int MinChangeSum = 30;
 
+    /// <summary>The share of swept blocks that can change with nothing broken: sparkles, popups and
+    /// ore glints move a few boxes on every frame. Live 2026-09-30 on the Mine #8 floor, where nothing
+    /// is breakable, the same pass read 3 of 43 and 4 of 40 for twelve minutes; real passes read 22 of
+    /// 32 and more.</summary>
+    public const double NoiseShare = 0.10;
+
+    /// <summary>Whether <paramref name="changed"/> of <paramref name="points"/> is more than noise.</summary>
+    public static bool Broke(int changed, int points) => changed > points * NoiseShare;
+
     /// <summary>How many swept blocks changed between the two frames.</summary>
     public static int Count(FramePixels before, FramePixels after, IReadOnlyList<SweepPoint> path, int clientW, int clientH, int pitch)
     {

@@ -304,7 +304,8 @@ public sealed class PulseLoop
             _sweepCheck = null;
             var points = SweepChange.Points(check.Path);
             var changed = SweepChange.Count(check.Before, frame, check.Path, finder.ClientW, finder.ClientH, check.Pitch);
-            if (changed == 0) return NothingInReach($"the sweep broke nothing (0 of {points} points changed)");
+            if (!SweepChange.Broke(changed, points))
+                return NothingInReach($"the sweep broke nothing ({changed} of {points} points changed)");
             _emptyPasses = 0;
             _turns = 0;
             _progressAt = now;
