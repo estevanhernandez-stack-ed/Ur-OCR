@@ -33,7 +33,8 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// in a row (RideLonger). RockCapMinutes on one
 /// aim layer with nothing cleared (time behind or paused not counted): Go to Top. A colour-share read
 /// with no layer, or one under DarkShareFloorPct, is dark: no pass, a burst; DarkStreakLimit of them
-/// in a row: Go to Top ("can't see the mine"). Each tick does
+/// in a row, DarkGraceMs after the start, the last Go to Top or the last good read: Go to Top
+/// ("can't see the mine"). Each tick does
 /// everything it can and returns at the first wait. Nothing starts unless the account is in front,
 /// read again right before each macro; a playback already started is still followed.
 /// A clear or macro whose check could not run (CheckFailed) or that Ur Task lost (Lost) stops the loop.
@@ -81,6 +82,11 @@ public sealed class PulseLoop
     /// <summary>Dark reads in a row (no layer, or a layer under DarkShareFloorPct) before the pulse goes
     /// to top: it cannot see the mine, and bursting in the dark does not get it back up.</summary>
     public const int DarkStreakLimit = 4;
+    /// <summary>A dark streak goes to top only once this long has passed since the later of the loop's
+    /// start, the last Go to Top and the last read at or over DarkShareFloorPct (live 2026-09-30: right
+    /// after a Go to Top, down a lava shaft with the camera jammed close, four reads in a row came back
+    /// "no layer (best blue 2-3%)" and sent it to top again, round and round).</summary>
+    public const int DarkGraceMs = 45000;
 
     private readonly PulseConfig _config;
     private readonly RingDefinition? _ring;
@@ -150,6 +156,7 @@ public sealed class PulseLoop
     private DateTimeOffset? _targetFired;  // the target usable's last try
     private string? _usable;               // "ride" or "target" while that usable's call is in flight
     private int _darkReads;                // colour-share reads in a row with no layer or one under the floor
+    private DateTimeOffset _darkGraceFrom; // later of: start, last Go to Top, last read at or over the floor
 
     public PulseLoop(PulseConfig config, IReadOnlyList<RingDefinition> rings, IReadOnlyList<Trigger> triggers,
         ISpotReader reader, IMacroRunClient macros, IClock clock, Action<string> log)
@@ -164,6 +171,7 @@ public sealed class PulseLoop
         _toleranceRgb = _spots.Select(s => s.Color?.ToleranceRgb ?? 0).DefaultIfEmpty(0).Max();
         _call = new MacroCall(macros, config.AccountUserId.ToString(CultureInfo.InvariantCulture), clock, log);
         _rideMs = config.RideFirstMs;      // the start is a ride from the top: no read yet
+        _darkGraceFrom = clock.Now;        // the dark grace runs from the start
 
         if (PulseValidation.Validate(config, rings, triggers) is { } problem)
         {
@@ -252,6 +260,7 @@ public sealed class PulseLoop
             case PulseState.GoingToTop:
                 if (!_macroDone) return Begin(M.GoToTop, PulseMacroNames.GoToTop);
                 Layer = null;              // back at the top: the rock cap starts over
+                _darkGraceFrom = now;      // the dark grace runs from the top, not from the press
                 _reachedAim = false;       // and the ride usable may fire again once a read is above the aim
                 _readAbove = false;
                 _emptyPasses = 0;          // and so does the growing burst
@@ -313,7 +322,8 @@ public sealed class PulseLoop
         {
             // A dark read: nothing to trust on this frame, whatever layer it named.
             _readAbove = false;            // not sure where it is: no ride usable on this burst
-            if (++_darkReads >= DarkStreakLimit)
+            var dark = now - _darkGraceFrom;
+            if (++_darkReads >= DarkStreakLimit && dark.TotalMilliseconds >= DarkGraceMs)
             {
                 _log($"can't see the mine ({_darkReads} dark reads in a row): going to top");
                 return Enter(PulseState.GoingToTop);       // Enter starts the streak over
@@ -324,6 +334,7 @@ public sealed class PulseLoop
             return Enter(PulseState.Bursting);
         }
         _darkReads = 0;
+        _darkGraceFrom = now;              // a good read: the dark grace starts over
 
         var next = ranked.FirstOrDefault(x => !string.Equals(x.Name, layer, StringComparison.OrdinalIgnoreCase));
         var seen = next.Name is null
@@ -899,7 +910,11 @@ public sealed class PulseLoop
     {
         if (next is PulseState.Riding or PulseState.Bursting or PulseState.GoingToTop or PulseState.Turning or PulseState.Charging)
             ForgetNoOutline();
-        if (next == PulseState.GoingToTop) _darkReads = 0;   // back at the top: the dark streak starts over
+        if (next == PulseState.GoingToTop)
+        {
+            _darkReads = 0;                // back at the top: the dark streak starts over
+            _darkGraceFrom = _clock.Now;   // and so does its grace
+        }
         State = next;
         _burstMs = _config.BurstMs;       // a growing burst is set by RideLonger after this
         _macroDone = macroDone;

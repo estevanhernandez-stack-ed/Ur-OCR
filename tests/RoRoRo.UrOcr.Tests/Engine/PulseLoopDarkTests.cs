@@ -8,7 +8,10 @@ namespace RoRoRo.UrOcr.Tests.Engine;
 /// "Can't see the mine" (live 2026-09-30): a mine reset with the character at the top dropped it at
 /// the bottom of the full mine, in the dark. The pulse rode burst after burst on "no layer" reads and
 /// then took "black (4% of the area)" as the target. Now a read under DarkShareFloorPct is a dark
-/// read, never a target pass, and DarkStreakLimit dark reads in a row go to top.
+/// read, never a target pass, and DarkStreakLimit dark reads in a row go to top, but only once
+/// DarkGraceMs has passed since the start, the last Go to Top or the last good read (live the same
+/// day: four "no layer" reads down a lava shaft right after a Go to Top sent it to top again, in a loop).
+/// Each NextRead is 3 s on the fake clock; extraMs rides longer to pass the grace.
 /// </summary>
 public class PulseLoopDarkTests
 {
@@ -27,12 +30,12 @@ public class PulseLoopDarkTests
 
     private static Task Tick(Rig r) => r.Loop.TickAsync(true, 7, CancellationToken.None);
 
-    /// <summary>From Riding or Bursting (2 s): Auto Mine on, ride, Auto Mine off, settle 1 s, read.</summary>
-    private static async Task NextRead(Rig r)
+    /// <summary>From Riding or Bursting (2 s, plus extraMs): Auto Mine on, ride, Auto Mine off, settle 1 s, read.</summary>
+    private static async Task NextRead(Rig r, int extraMs = 0)
     {
         await Tick(r);
         await Tick(r);
-        r.Clock.Advance(2000);
+        r.Clock.Advance(2000 + extraMs);
         await Tick(r);
         await Tick(r);
         r.Clock.Advance(1000);
@@ -50,8 +53,26 @@ public class PulseLoopDarkTests
 
     private static int GoToTops(Rig r) => r.Macros.RunIds.Count(id => id == "id-top");
 
+    private const int PastGrace = PulseLoop.DarkGraceMs;
+
+    private static string CantSee(int n) => $"can't see the mine ({n} dark reads in a row): going to top";
+
+    private static int NoLayer(Rig r) => r.Log.Count(l => l.StartsWith("no layer on a calm frame"));
+
+    /// <summary>A good (calm) read starts a pass; the ClearAt finishes, and the next read sees dark.</summary>
+    private static async Task GoodReadThenDark(Rig r)
+    {
+        r.Reader.Frame = PulseFixtures.Calm();
+        await NextRead(r);
+        Assert.Equal(PulseState.Clearing, r.Loop.State);
+        r.Reader.Frame = Dark();
+        await Tick(r);                                // the ClearAt finishes: settle and read
+        r.Clock.Advance(1000);
+        await Tick(r);
+    }
+
     [Fact]
-    public async Task Four_dark_reads_in_a_row_go_to_top()
+    public async Task Four_dark_reads_in_a_row_go_to_top_once_the_grace_has_passed()
     {
         var rig = Build(Dark());
 
@@ -62,11 +83,77 @@ public class PulseLoopDarkTests
         }
         Assert.Equal(0, GoToTops(rig));
 
-        await NextRead(rig);
+        await NextRead(rig, PastGrace);
 
         Assert.Equal(1, GoToTops(rig));
-        Assert.Contains(rig.Log, l => l == "can't see the mine (4 dark reads in a row): going to top");
-        Assert.Equal(3, rig.Log.Count(l => l.StartsWith("no layer on a calm frame")));
+        Assert.Contains(rig.Log, l => l == CantSee(4));
+        Assert.Equal(3, NoLayer(rig));
+    }
+
+    [Fact]
+    public async Task Four_dark_reads_within_20_s_of_the_start_do_not_go_to_top()
+    {
+        var rig = Build(Dark());
+
+        for (var i = 0; i < 4; i++) await NextRead(rig);    // 12 s
+
+        Assert.Equal(0, GoToTops(rig));
+        Assert.Equal(PulseState.Bursting, rig.Loop.State);
+        Assert.Equal(4, NoLayer(rig));                      // the 4th logs the normal no-layer line
+        Assert.DoesNotContain(rig.Log, l => l.StartsWith("can't see the mine"));
+    }
+
+    [Fact]
+    public async Task Four_dark_reads_within_20_s_of_a_Go_to_Top_do_not_go_to_top()
+    {
+        var rig = Build(Dark());
+        for (var i = 0; i < 3; i++) await NextRead(rig);
+        await NextRead(rig, PastGrace);
+        Assert.Equal(1, GoToTops(rig));
+
+        await Tick(rig);                              // Go to Top finishes: riding again
+        Assert.Equal(PulseState.Riding, rig.Loop.State);
+        var before = NoLayer(rig);
+        for (var i = 0; i < 4; i++) await NextRead(rig);   // 12 s since the top
+
+        Assert.Equal(1, GoToTops(rig));
+        Assert.Equal(PulseState.Bursting, rig.Loop.State);
+        Assert.Equal(before + 4, NoLayer(rig));
+        Assert.Single(rig.Log, l => l.StartsWith("can't see the mine"));
+    }
+
+    [Fact]
+    public async Task Dark_reads_going_on_past_45_s_since_the_last_good_read_go_to_top()
+    {
+        var rig = Build(Dark());
+        await GoodReadThenDark(rig);                  // the grace runs from the good read; 1 dark read
+        var reads = 1;
+        while (GoToTops(rig) == 0 && reads < 40)
+        {
+            await NextRead(rig);
+            reads++;
+        }
+
+        Assert.Equal(1, GoToTops(rig));
+        Assert.True(reads >= 15, $"went to top after {reads} dark reads of 3 s, inside the 45 s grace");
+        Assert.Contains(rig.Log, l => l == CantSee(reads));
+    }
+
+    [Fact]
+    public async Task A_good_read_starts_the_grace_over()
+    {
+        var rig = Build(Dark());
+        for (var i = 0; i < 3; i++) await NextRead(rig);
+        await NextRead(rig, 30000);                   // 42 s from the start, 4 dark reads
+        Assert.Equal(0, GoToTops(rig));
+
+        await GoodReadThenDark(rig);                  // past 45 s from the start, but the grace starts over
+        for (var i = 0; i < 4; i++) await NextRead(rig);
+        Assert.Equal(0, GoToTops(rig));               // 5 dark reads, about 15 s past the good read
+
+        await NextRead(rig, PastGrace);
+        Assert.Equal(1, GoToTops(rig));
+        Assert.Contains(rig.Log, l => l == CantSee(6));
     }
 
     [Fact]
@@ -84,7 +171,7 @@ public class PulseLoopDarkTests
         await Tick(rig);                              // the ClearAt finishes: settle and read
         rig.Clock.Advance(1000);
         await Tick(rig);
-        for (var i = 0; i < 2; i++) await NextRead(rig);
+        for (var i = 0; i < 2; i++) await NextRead(rig, PastGrace);
 
         Assert.Equal(0, GoToTops(rig));
         Assert.DoesNotContain(rig.Log, l => l.StartsWith("can't see the mine"));
@@ -102,10 +189,11 @@ public class PulseLoopDarkTests
         Assert.Contains(rig.Log, l => l == "layer grey (4% of the area) is under the 5% floor: riding a burst");
         Assert.DoesNotContain(rig.Log, l => l.Contains("is the target"));
 
-        for (var i = 0; i < 3; i++) await NextRead(rig);
+        for (var i = 0; i < 2; i++) await NextRead(rig);
+        await NextRead(rig, PastGrace);
 
         Assert.Equal(1, GoToTops(rig));
-        Assert.Contains(rig.Log, l => l == "can't see the mine (4 dark reads in a row): going to top");
+        Assert.Contains(rig.Log, l => l == CantSee(4));
         Assert.Empty(rig.Macros.ClearAts);
     }
 
@@ -126,16 +214,17 @@ public class PulseLoopDarkTests
     public async Task The_streak_starts_over_after_Go_to_Top()
     {
         var rig = Build(Dark());
-        for (var i = 0; i < 4; i++) await NextRead(rig);
+        for (var i = 0; i < 3; i++) await NextRead(rig);
+        await NextRead(rig, PastGrace);
         Assert.Equal(1, GoToTops(rig));
 
         await Tick(rig);                              // Go to Top finishes: riding again
         Assert.Equal(PulseState.Riding, rig.Loop.State);
-        for (var i = 0; i < 3; i++) await NextRead(rig);
-        Assert.Equal(1, GoToTops(rig));               // three dark reads since: not yet
+        for (var i = 0; i < 3; i++) await NextRead(rig, PastGrace);
+        Assert.Equal(1, GoToTops(rig));               // three dark reads since, grace long past: not yet
 
         await NextRead(rig);
         Assert.Equal(2, GoToTops(rig));
-        Assert.Equal(2, rig.Log.Count(l => l == "can't see the mine (4 dark reads in a row): going to top"));
+        Assert.Equal(2, rig.Log.Count(l => l == CantSee(4)));
     }
 }
