@@ -581,4 +581,66 @@ public class PulseLoopFinderTests
         Assert.Equal(new ClearAtOutline(60, 60, 60, 225), req.Outline);
         Assert.Contains(rig.Log, l => l == "block size 60 px (read from the frame)");
     }
+
+    // Live 2026-09-30: with blocks near 110 px the read swung to 30, 33, 29 and 47 px on later passes,
+    // and each of those passes gridded and boxed at the swung size. An account that set its block
+    // size ignores a read far from it.
+
+    [Fact]
+    public async Task A_read_far_from_the_account_s_block_size_uses_the_setting()
+    {
+        var rig = Build(frame: Blocks(32), config: PulseFixtures.Config() with { SweepBlockPx = 110 });
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(110, 110, 60, 225), req.Outline);
+        Assert.Contains(req.Points, p => (p.X, p.Y) == (500, 340));    // the grid one setting block apart
+        Assert.DoesNotContain(req.Points, p => (p.X, p.Y) == (422, 340));
+        Assert.Equal(new[] { "block size 110 px (account setting; read 32 px is far from it)" },
+            rig.Log.Where(l => l.StartsWith("block size")));
+    }
+
+    [Theory]
+    [InlineData(42, true)]      // 0.75 x 42 = 31.5: 32 is inside
+    [InlineData(43, false)]     // 0.75 x 43 = 32.25: 32 is under it
+    [InlineData(25, true)]      // 1.33 x 25 = 33.25: 32 is inside
+    [InlineData(24, false)]     // 1.33 x 24 = 31.92: 32 is over it
+    public async Task A_read_counts_as_near_the_setting_between_three_quarters_and_four_thirds_of_it(int setting, bool near)
+    {
+        var rig = Build(frame: Blocks(32), config: PulseFixtures.Config() with { SweepBlockPx = setting });
+
+        await FirstRead(rig);
+
+        var side = Assert.Single(rig.Macros.ClearAts).Outline.W;
+        Assert.Equal(near ? 32 : setting, side);
+        Assert.Contains(rig.Log, l => l == (near
+            ? "block size 32 px (read from the frame)"
+            : $"block size {setting} px (account setting; read 32 px is far from it)"));
+        Assert.Equal((0.75, 1.33), (PulseLoop.SettingReadMin, PulseLoop.SettingReadMax));
+    }
+
+    [Fact]
+    public async Task A_read_under_half_the_default_uses_the_account_s_block_size_when_it_has_one()
+    {
+        var rig = Build(WideRing(), Blocks(18), PulseFixtures.Config() with { SweepBlockPx = 110 });
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.ClearAts);
+        Assert.Equal(new ClearAtOutline(110, 110, 60, 225), req.Outline);
+        Assert.Contains(rig.Log, l => l == "block size 110 px (account setting; read 18 px is far from it)");
+    }
+
+    [Fact]
+    public async Task No_read_with_an_account_setting_still_uses_the_layer_default_for_the_finder()
+    {
+        var rig = Build(frame: PulseFixtures.Calm(), config: PulseFixtures.Config() with { SweepBlockPx = 110 });
+
+        await FirstRead(rig);
+
+        Assert.Equal(new ClearAtOutline(FinderSetup.MaxOutlineSide, FinderSetup.MaxOutlineSide, 60, 225),
+            Assert.Single(rig.Macros.ClearAts).Outline);
+        Assert.Contains(rig.Log, l => l == "block size 50 px (layer default; no clear pattern)");
+    }
 }

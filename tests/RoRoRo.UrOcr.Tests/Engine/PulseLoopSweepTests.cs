@@ -307,9 +307,9 @@ public class PulseLoopSweepTests
     }
 
     [Fact]
-    public async Task A_block_size_read_off_the_frame_wins_over_the_account_s()
+    public async Task A_block_size_read_near_the_account_s_wins_over_it()
     {
-        var rig = Build(Grey(), PulseFixtures.Config() with { SweepBlockPx = 160 });
+        var rig = Build(Grey(), PulseFixtures.Config() with { SweepBlockPx = 36 });
 
         await FirstRead(rig);
 
@@ -320,9 +320,25 @@ public class PulseLoopSweepTests
     }
 
     [Fact]
+    public async Task A_block_size_read_far_from_the_account_s_sweeps_at_the_account_s()
+    {
+        var rig = Build(Grey(), PulseFixtures.Config() with { SweepBlockPx = 110 });
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.Sweeps);
+        Assert.Equal(110, req.Step);
+        Assert.Equal(PathAt(110), req.Path);
+        Assert.Null(SweepPathTests.UrTaskRefusal(req.Path, req.Step, 800, 599));
+        Assert.Equal(new[] { "block size 110 px (account setting; read 32 px is far from it)" },
+            rig.Log.Where(l => l.StartsWith("block size")));
+    }
+
+    [Fact]
     public async Task A_read_Ur_Task_would_refuse_sweeps_at_the_account_s_block_size()
     {
-        // The 7 px read of A_block_size_Ur_Task_would_refuse_never_sweeps, with the account set to 20.
+        // The 7 px read of A_block_size_Ur_Task_would_refuse_never_sweeps, with the account set to 20:
+        // far from it, so the pass (finder and sweep) takes 20.
         var px = Frames.Grid(2400, 1797, 21, 21, PulseFixtures.Grey, Seam);
         var ring = PulseFixtures.Ring() with
         {
@@ -332,8 +348,8 @@ public class PulseLoopSweepTests
 
         await FirstRead(rig);
 
-        Assert.Contains(rig.Log, l => l == "block size 7 px (read from the frame)");
-        Assert.Contains(rig.Log, l => l == "block size 20 px (account setting)");
+        Assert.Equal(new[] { "block size 20 px (account setting; read 7 px is far from it)" },
+            rig.Log.Where(l => l.StartsWith("block size")));
         var req = Assert.Single(rig.Macros.Sweeps);
         Assert.Equal(20, req.Step);
         Assert.Null(SweepPathTests.UrTaskRefusal(req.Path, req.Step, 800, 599));
@@ -387,6 +403,21 @@ public class PulseLoopSweepTests
 
         Assert.Empty(rig.Macros.Sweeps);
         Assert.NotEmpty(Assert.Single(rig.Macros.ClearAts).Points);
+        Assert.Contains(rig.Log, l => l == "no sweep path fits at 160 px blocks (account setting): clearing stone point by point");
+    }
+
+    [Fact]
+    public async Task When_no_path_fits_at_the_account_s_block_size_over_a_far_read_it_names_the_setting()
+    {
+        var ring = PulseFixtures.Ring() with
+        {
+            Finders = new[] { PulseFixtures.Finder() with { CenterX = 700, Guard = PulseFixtures.Dot } },
+        };
+        var rig = Build(Grey(), PulseFixtures.Config() with { SweepBlockPx = 160 }, ring);
+
+        await FirstRead(rig);
+
+        Assert.Empty(rig.Macros.Sweeps);
         Assert.Contains(rig.Log, l => l == "no sweep path fits at 160 px blocks (account setting): clearing stone point by point");
     }
 }

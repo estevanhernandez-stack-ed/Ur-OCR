@@ -39,6 +39,12 @@ public sealed class PulseLoop
     /// <summary>Camera turns after passes with nothing in reach before a burst: a quarter turn each,
     /// so three more angles and the full circle looked at.</summary>
     public const int MaxTurns = 3;
+    /// <summary>With the account's SweepBlockPx set, a block size read off the frame under this share
+    /// of it is ignored and the setting used (live 2026-09-30: real blocks near 110 px, reads of 29 to
+    /// 47 px on later passes).</summary>
+    public const double SettingReadMin = 0.75;
+    /// <summary>With the account's SweepBlockPx set, a read over this share of it is ignored too.</summary>
+    public const double SettingReadMax = 1.33;
 
     private readonly PulseConfig _config;
     private readonly RingDefinition? _ring;
@@ -51,6 +57,7 @@ public sealed class PulseLoop
     private FinderSetup? _pass;                        // this pass's finder: the block size read off the frame
     private string? _blockLogged;                      // the last block size line, logged only when it changes
     private bool _pitchUnread;                         // this pass uses the layer default block size
+    private bool _pitchFromSetting;                    // this pass uses the account's SweepBlockPx over a far read
     private IReadOnlyList<FinderTarget>? _targets;     // this pass's ClearAt points; null on a Clear spot pass
     private bool _clearAtEnded;                        // this pass's ClearAt has ended
     private bool _frameLogged;
@@ -346,7 +353,7 @@ public sealed class PulseLoop
         var readFits = !_pitchUnread && pass.Pitch is >= BridgeContract.MinSweepStep and <= BridgeContract.MaxSweepStep;
         int step;
         string? line = null;
-        if (readFits) step = pass.Pitch;                   // ForPass already said "(read from the frame)"
+        if (readFits) step = pass.Pitch;                   // ForPass already said where the size came from
         else if (_config.SweepBlockPx is { } own)
         {
             step = own;
@@ -360,7 +367,7 @@ public sealed class PulseLoop
 
         var path = SweepPath.Build(pass with { Pitch = step }, _config.SweepNearSide);
         if (path.Count < SweepPath.MinPoints)
-            line = $"no sweep path fits at {step} px blocks ({(readFits ? "read from the frame" : "account setting")}): clearing stone point by point";
+            line = $"no sweep path fits at {step} px blocks ({(readFits && !_pitchFromSetting ? "read from the frame" : "account setting")}): clearing stone point by point";
         if (line is not null && line != _sweepLogged) _log(line);
         _sweepLogged = line;
         if (path.Count < SweepPath.MinPoints) return null;
@@ -382,7 +389,11 @@ public sealed class PulseLoop
     /// a camera jammed against the character shows blocks far bigger than the default. A read under half
     /// the layer's measured pitch counts as unread too (Task 12 live finding): the fine crack texture
     /// inside a block reads as a much smaller, spurious pitch than the block itself; only this lower
-    /// bound distrusts a read, a larger one is still trusted. The frame may be another size than the
+    /// bound distrusts a read, a larger one is still trusted. With the account's SweepBlockPx set, a
+    /// read outside SettingReadMin..SettingReadMax of it (including one under half the default) is
+    /// ignored and the setting is this pass's block size, for the grid, the box and the sweep alike
+    /// (live 2026-09-30: the read swung from 104 to 30 px while the blocks stayed near 110); no read
+    /// at all still falls back to the layer default. The frame may be another size than the
     /// measured client: the centre is scaled into it and the block scaled back to measured pixels.</summary>
     private FinderSetup ForPass(FramePixels frame, FinderSetup f)
     {
@@ -391,17 +402,21 @@ public sealed class PulseLoop
         var readPitch = read is null
             ? (int?)null
             : Math.Max(FinderSetup.MinPitch, (int)Math.Round(read.Pitch * 2 / (sx + sy), MidpointRounding.AwayFromZero));
-        var tooSmall = readPitch is { } rp && rp < f.Pitch / 2;
+        _pitchFromSetting = readPitch is { } near && _config.SweepBlockPx is { } own
+            && (near < own * SettingReadMin || near > own * SettingReadMax);
+        var tooSmall = !_pitchFromSetting && readPitch is { } rp && rp < f.Pitch / 2;
         _pitchUnread = read is null || tooSmall;
-        var pitch = _pitchUnread ? f.Pitch : readPitch!.Value;
+        var pitch = _pitchFromSetting ? _config.SweepBlockPx!.Value : _pitchUnread ? f.Pitch : readPitch!.Value;
         var side = _pitchUnread ? FinderSetup.MaxOutlineSide : Math.Clamp(pitch, MinOutlineSide, FinderSetup.MaxOutlineSide);
         var minCount = Math.Min(f.Outline.MinCount, side * side);
 
         var reason = read is null
             ? "layer default; no clear pattern"
-            : tooSmall
-                ? $"layer default; read {readPitch!.Value} px is under half the default"
-                : "read from the frame";
+            : _pitchFromSetting
+                ? $"account setting; read {readPitch!.Value} px is far from it"
+                : tooSmall
+                    ? $"layer default; read {readPitch!.Value} px is under half the default"
+                    : "read from the frame";
         var line = $"block size {pitch} px ({reason})";
         if (minCount < f.Outline.MinCount) line += $"; outline minCount {minCount} to fit the {side}x{side} box";
         if (line != _blockLogged) _log(line);
