@@ -273,4 +273,120 @@ public class PulseLoopSweepTests
         Assert.NotEmpty(Assert.Single(rig.Macros.ClearAts).Points);
         Assert.Empty(rig.Macros.Sweeps);
     }
+
+    /// <summary>The sweep the loop plans on the account's own block size: the fixture finder at that size.</summary>
+    private static IReadOnlyList<SweepPoint> PathAt(int px, bool nearSide = true) =>
+        SweepPath.Build(PulseFixtures.Finder() with { Pitch = px, Guard = PulseFixtures.Dot }, nearSide);
+
+    [Fact]
+    public async Task Starts_saying_the_account_s_block_size()
+    {
+        var rig = Build(Grey(), PulseFixtures.Config() with { SweepBlockPx = 160 });
+
+        await Tick(rig);
+
+        Assert.Contains(rig.Log, l => l.StartsWith("started")
+            && l.EndsWith("sweeping stone (400 ms a point, near side on, 160 px blocks without a read)"));
+    }
+
+    [Fact]
+    public async Task An_unread_block_size_sweeps_at_the_account_s_block_size()
+    {
+        var rig = Build(PulseFixtures.Calm(), PulseFixtures.Config() with { SweepBlockPx = 160 });
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.Sweeps);
+        Assert.Equal(160, req.Step);
+        Assert.Equal(PathAt(160), req.Path);
+        Assert.Null(SweepPathTests.UrTaskRefusal(req.Path, req.Step, 800, 599));
+        Assert.Empty(rig.Macros.ClearAts);                       // no ore: straight to the sweep
+        Assert.Equal(new[] { "block size 50 px (layer default; no clear pattern)", "block size 160 px (account setting)" },
+            rig.Log.Where(l => l.StartsWith("block size")));
+        Assert.Contains(rig.Log, l => l.EndsWith($"is the target: 0 ore points, then a sweep of {PathAt(160).Count} points"));
+    }
+
+    [Fact]
+    public async Task A_block_size_read_off_the_frame_wins_over_the_account_s()
+    {
+        var rig = Build(Grey(), PulseFixtures.Config() with { SweepBlockPx = 160 });
+
+        await FirstRead(rig);
+
+        var req = Assert.Single(rig.Macros.Sweeps);
+        Assert.Equal(32, req.Step);
+        Assert.Equal(PathFor(), req.Path);
+        Assert.DoesNotContain(rig.Log, l => l.Contains("account setting"));
+    }
+
+    [Fact]
+    public async Task A_read_Ur_Task_would_refuse_sweeps_at_the_account_s_block_size()
+    {
+        // The 7 px read of A_block_size_Ur_Task_would_refuse_never_sweeps, with the account set to 20.
+        var px = Frames.Grid(2400, 1797, 21, 21, PulseFixtures.Grey, Seam);
+        var ring = PulseFixtures.Ring() with
+        {
+            Finders = new[] { PulseFixtures.Finder() with { Pitch = 12, Guard = PulseFixtures.Dot } },
+        };
+        var rig = Build(new FramePixels(2400, 1797, px), PulseFixtures.Config() with { SweepBlockPx = 20 }, ring);
+
+        await FirstRead(rig);
+
+        Assert.Contains(rig.Log, l => l == "block size 7 px (read from the frame)");
+        Assert.Contains(rig.Log, l => l == "block size 20 px (account setting)");
+        var req = Assert.Single(rig.Macros.Sweeps);
+        Assert.Equal(20, req.Step);
+        Assert.Null(SweepPathTests.UrTaskRefusal(req.Path, req.Step, 800, 599));
+    }
+
+    [Fact]
+    public async Task The_account_s_block_size_is_logged_once_while_it_is_in_use()
+    {
+        var rig = Build(PulseFixtures.Calm(), PulseFixtures.Config() with { SweepBlockPx = 160 });
+        var path = PathAt(160);
+        await FirstRead(rig);
+        await Tick(rig);                     // the sweep finished: settle
+
+        rig.Reader.Frame = PulseFixtures.Calm((path[1].X - 30, path[1].Y - 30, 60, 60, PulseFixtures.Black));
+        rig.Clock.Advance(1000);
+        await Tick(rig);                     // judged, then the next pass sweeps at 160 again
+
+        Assert.Equal(2, rig.Macros.Sweeps.Count);
+        Assert.Single(rig.Log, l => l == "block size 160 px (account setting)");
+    }
+
+    [Fact]
+    public async Task A_sweep_at_the_account_s_block_size_is_judged_at_that_size()
+    {
+        // SweepChange's box is an eighth of the step each way: 20 px at 160, so an 8 px mark at a
+        // swept point is too small to count, and a 60 px one counts.
+        var rig = Build(PulseFixtures.Calm(), PulseFixtures.Config() with { SweepBlockPx = 160 });
+        var path = PathAt(160);
+        await FirstRead(rig);
+        await Tick(rig);                     // the sweep finished: settle
+
+        rig.Reader.Frame = PulseFixtures.Calm((path[1].X - 30, path[1].Y - 30, 60, 60, PulseFixtures.Black),
+                                              (path[2].X - 4, path[2].Y - 4, 8, 8, PulseFixtures.Black));
+        rig.Clock.Advance(1000);
+        await Tick(rig);
+
+        Assert.Contains(rig.Log, l => l == $"the sweep changed 1 of {SweepChange.Points(path)} points");
+    }
+
+    [Fact]
+    public async Task When_no_path_fits_at_the_account_s_block_size_stone_is_cleared_point_by_point()
+    {
+        // The character near the right edge: at 160 px the start block east of it is off the client.
+        var ring = PulseFixtures.Ring() with
+        {
+            Finders = new[] { PulseFixtures.Finder() with { CenterX = 700, Guard = PulseFixtures.Dot } },
+        };
+        var rig = Build(PulseFixtures.Calm(), PulseFixtures.Config() with { SweepBlockPx = 160 }, ring);
+
+        await FirstRead(rig);
+
+        Assert.Empty(rig.Macros.Sweeps);
+        Assert.NotEmpty(Assert.Single(rig.Macros.ClearAts).Points);
+        Assert.Contains(rig.Log, l => l == "no sweep path fits at 160 px blocks (account setting): clearing stone point by point");
+    }
 }
