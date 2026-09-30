@@ -1,3 +1,5 @@
+using RoRoRo.UrOcr.Ipc;
+
 namespace RoRoRo.UrOcr.Storage;
 
 /// <summary>Whether a pulse can run. Null means valid; otherwise one sentence naming the first problem.</summary>
@@ -11,6 +13,9 @@ public static class PulseValidation
     /// <summary>The dwell range Ur Task's SweepPath takes.</summary>
     public const int MinSweepDwellMs = 50;
     public const int MaxSweepDwellMs = 5000;
+    /// <summary>The step range Ur Task's SweepPath takes, for the account's fallback block size.</summary>
+    public const int MinSweepBlockPx = BridgeContract.MinSweepStep;
+    public const int MaxSweepBlockPx = BridgeContract.MaxSweepStep;
 
     /// <summary>The ring's spot triggers in ring order, enabled or not: the pulse reads their
     /// positions and sample boxes even when the 0.5.0 triggers themselves are switched off.</summary>
@@ -51,6 +56,8 @@ public static class PulseValidation
             return $"rockCapMinutes must be 1 to {MaxRockCapMinutes}, not {p.RockCapMinutes}.";
         if (p.SweepDwellMs < MinSweepDwellMs || p.SweepDwellMs > MaxSweepDwellMs)
             return $"sweepDwellMs must be {MinSweepDwellMs} to {MaxSweepDwellMs}, not {p.SweepDwellMs}.";
+        if (p.SweepBlockPx is < MinSweepBlockPx or > MaxSweepBlockPx)
+            return $"sweepBlockPx must be {MinSweepBlockPx} to {MaxSweepBlockPx} (the step Ur Task takes), not {p.SweepBlockPx}.";
         if (FinderFor(ring, p.AimLayer) is { } finder && finder.Validate() is { } finderProblem)
             return $"Ring {p.RingId}'s ore finder for {finder.Layer}: {finderProblem}";
 

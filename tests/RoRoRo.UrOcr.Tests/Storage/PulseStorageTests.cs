@@ -95,6 +95,7 @@ public class PulseStorageTests
         Assert.Null(p.Macros);
         Assert.Equal(400, p.SweepDwellMs);
         Assert.True(p.SweepNearSide);
+        Assert.Null(p.SweepBlockPx);
     }
 
     [Fact]
@@ -109,6 +110,20 @@ public class PulseStorageTests
         Assert.Contains("\"sweepDwellMs\": 650", json);
         Assert.Contains("\"sweepNearSide\": false", json);
         Assert.Equal((650, false), (p.SweepDwellMs, p.SweepNearSide));
+    }
+
+    [Fact]
+    public void The_sweep_block_size_survives_a_reload_and_is_left_out_when_not_set()
+    {
+        var set = TempFile();
+        new TriggerStore(set).UpsertPulse(Pulse() with { SweepBlockPx = 160 });
+        var unset = TempFile();
+        new TriggerStore(unset).UpsertPulse(Pulse());
+
+        Assert.Contains("\"sweepBlockPx\": 160", File.ReadAllText(set));
+        Assert.Equal(160, Assert.Single(new TriggerStore(set).Pulses).SweepBlockPx);
+        Assert.DoesNotContain("sweepBlockPx", File.ReadAllText(unset));
+        Assert.Null(Assert.Single(new TriggerStore(unset).Pulses).SweepBlockPx);
     }
 
     [Fact]

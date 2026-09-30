@@ -83,6 +83,21 @@ public class PulseValidationTests
         Assert.Null(Check(Pulse() with { SweepDwellMs = 5000 }));
     }
 
+    [Theory]
+    [InlineData(7)]
+    [InlineData(241)]
+    [InlineData(0)]
+    public void The_sweep_block_size_must_be_in_range(int px) =>
+        Assert.Contains($"sweepBlockPx must be 8 to 240 (the step Ur Task takes), not {px}", Check(Pulse() with { SweepBlockPx = px }));
+
+    [Fact]
+    public void The_sweep_block_size_limits_and_no_setting_are_valid()
+    {
+        Assert.Null(Check(Pulse() with { SweepBlockPx = 8 }));
+        Assert.Null(Check(Pulse() with { SweepBlockPx = 240 }));
+        Assert.Null(Check(Pulse() with { SweepBlockPx = null }));
+    }
+
     [Fact]
     public void The_ring_needs_all_eight_spot_triggers() =>
         Assert.Contains("needs 8 spot triggers", Check(Pulse(), Spots(7)));

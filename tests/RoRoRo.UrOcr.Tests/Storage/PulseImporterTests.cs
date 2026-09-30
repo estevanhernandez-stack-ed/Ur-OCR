@@ -137,4 +137,27 @@ public class PulseImporterTests
 
         Assert.Contains("Camera turn left", ex.Message);
     }
+
+    [Fact]
+    public void The_sweep_settings_in_the_file_are_imported()
+    {
+        var file = Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".pulse.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "{\"schema\":1,\"pulses\":[{\"accountUserId\":42,\"ringId\":\"mine8\",\"targetLayer\":2,"
+            + "\"sweepDwellMs\":600,\"sweepNearSide\":false,\"sweepBlockPx\":160}]}");
+        var store = StoreWithRing();
+
+        var p = Assert.Single(PulseImporter.Build(PulseFile.Load(file), store.Rings, store.All, Macros()));
+
+        Assert.Equal((600, false, (int?)160), (p.SweepDwellMs, p.SweepNearSide, p.SweepBlockPx));
+    }
+
+    [Fact]
+    public void A_sweep_block_size_out_of_range_is_refused()
+    {
+        var ex = Assert.Throws<InvalidDataException>(() => Build(StoreWithRing(), null, Entry() with { SweepBlockPx = 300 }));
+
+        Assert.Contains("Account 42", ex.Message);
+        Assert.Contains("sweepBlockPx must be 8 to 240", ex.Message);
+    }
 }
