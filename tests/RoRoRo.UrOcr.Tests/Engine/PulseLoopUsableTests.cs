@@ -105,6 +105,73 @@ public class PulseLoopUsableTests
     }
 
     [Fact]
+    public async Task The_ride_usable_does_not_fire_on_a_burst_after_a_read_with_no_layer()
+    {
+        // Live 2026-09-30: "no layer on a calm frame ... riding a burst" fired the Rover because the
+        // last layer read was above the target, with black ore all round the character.
+        var rig = Build(With(rideEvery: 1000), PulseFixtures.Navy);
+        await FirstRead(rig);             // above the target: fired
+        await Tick(rig);
+
+        rig.Reader.Next = ScriptedReader.All(PulseFixtures.Orange);
+        await Cycle(rig);                 // no layer: a burst, and no usable
+
+        Assert.Contains(rig.Log, l => l.StartsWith("no layer on a calm frame"));
+        Assert.Equal(PulseState.Bursting, rig.Loop.State);
+        Assert.Equal(1, Count(rig, "id-rover"));
+        Assert.Equal("id-on", rig.Macros.RunIds.Last());
+    }
+
+    [Fact]
+    public async Task The_ride_usable_does_not_fire_on_a_burst_after_a_colour_share_read_with_no_layer()
+    {
+        var rig = Build(With(rideEvery: 1000), PulseFixtures.Grey, PulseFixtures.RingWithFinder());
+        rig.Reader.Frame = new FramePixels(800, 599, Frames.Solid(800, 599, PulseFixtures.Navy));
+        await FirstRead(rig);             // above the target: fired
+        await Tick(rig);
+
+        rig.Reader.Frame = new FramePixels(800, 599, Frames.Solid(800, 599, PulseFixtures.Orange));
+        await Cycle(rig);
+
+        Assert.Contains(rig.Log, l => l.StartsWith("no layer on a calm frame"));
+        Assert.Equal(1, Count(rig, "id-rover"));
+        Assert.Equal("id-on", rig.Macros.RunIds.Last());
+    }
+
+    [Fact]
+    public async Task Once_the_target_was_read_the_ride_usable_stays_off_until_Go_to_Top()
+    {
+        var rig = Build(With(rideEvery: 1000, target: 2), PulseFixtures.Black);
+        await FirstRead(rig);             // on the target: clearing
+
+        rig.Reader.Next = ScriptedReader.All(PulseFixtures.Navy);   // a read above it (a misread, a drop back)
+        for (var i = 0; i < 60 && !rig.Log.Any(l => l.Contains("is above the target")); i++)
+        {
+            await Tick(rig);
+            rig.Clock.Advance(500);
+        }
+        Assert.Contains(rig.Log, l => l.Contains("is above the target"));
+        await Cycle(rig);                 // and another ride above it
+        Assert.Equal(0, Count(rig, "id-rover"));
+
+        rig.Reader.Next = ScriptedReader.All(PulseFixtures.Grey);   // past the target: Go to Top
+        for (var i = 0; i < 60 && !rig.Log.Any(l => l.Contains("going to top")); i++)
+        {
+            await Tick(rig);
+            rig.Clock.Advance(500);
+        }
+        Assert.Equal(0, Count(rig, "id-rover"));
+
+        rig.Reader.Next = ScriptedReader.All(PulseFixtures.Navy);   // from the top, above the target again
+        for (var i = 0; i < 60 && Count(rig, "id-rover") == 0; i++)
+        {
+            await Tick(rig);
+            rig.Clock.Advance(500);
+        }
+        Assert.Equal(1, Count(rig, "id-rover"));
+    }
+
+    [Fact]
     public async Task The_target_usable_fires_before_the_pass_and_settles_before_reading_again()
     {
         var rig = Build(With(targetEvery: 20000), PulseFixtures.Grey);

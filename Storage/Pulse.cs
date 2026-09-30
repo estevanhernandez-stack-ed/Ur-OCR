@@ -57,8 +57,9 @@ public sealed record PulseConfig(
 public sealed record PulseUsable(string Macro, int EveryMs);
 
 /// <summary>
-/// An account's usables, each optional. Ride fires at the start of a ride while the last calm read
-/// was above the aim layer (a Rover bomb on the way down); Target fires before a pass on the aim
+/// An account's usables, each optional. Ride fires at the start of a ride only while the pulse is
+/// sure it is above the aim layer (a Rover bomb on the way down): the last calm read named a layer
+/// above it, and no read has reached the aim layer or deeper since the last Go to Top; Target fires before a pass on the aim
 /// layer, then the loop settles and reads again, since the character may drop (a Core Charge). Never
 /// while held (pause, dry run) or going to top. A usable Ur Task refuses, or that fails, is skipped
 /// that time and the loop goes on.

@@ -27,7 +27,10 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// read again right before each macro; a playback already started is still followed.
 /// A clear or macro whose check could not run (CheckFailed) or that Ur Task lost (Lost) stops the loop.
 /// Usables (PulseUsables), each at most once per its everyMs: the ride usable fires at the start of a
-/// ride or burst while the last calm read was above the aim layer; the target usable fires when a read
+/// ride or burst only while the pulse is sure it is above the aim layer: the last calm read named a
+/// layer above it (a read with no layer does not count), and no read has reached the aim layer or
+/// gone deeper since the last Go to Top (live 2026-09-30: a Rover fired on a no-layer read with black
+/// ore all round the character). The target usable fires when a read
 /// lands on the aim layer, before that pass (Charging: the macro, then SettleMs and a read, since the
 /// character may drop). A usable is its own call between the pulse's calls, never retried: refused,
 /// busy or failed, it is skipped that time and the loop goes on.
@@ -102,6 +105,8 @@ public sealed class PulseLoop
     private int _burstMs;                  // this Bursting state's ride
     private int _turns;                    // camera turns since the last progress (cleared pass, new layer, Go to Top, burst)
     private DateTimeOffset? _rideFired;    // the ride usable's last try, for its everyMs
+    private bool _readAbove;               // the last calm read named a layer above the aim layer
+    private bool _reachedAim;              // a read landed on the aim layer or deeper since the last Go to Top
     private DateTimeOffset? _targetFired;  // the target usable's last try
     private string? _usable;               // "ride" or "target" while that usable's call is in flight
 
@@ -198,6 +203,8 @@ public sealed class PulseLoop
             case PulseState.GoingToTop:
                 if (!_macroDone) return Begin(M.GoToTop, PulseMacroNames.GoToTop);
                 Layer = null;              // back at the top: the rock cap starts over
+                _reachedAim = false;       // and the ride usable may fire again once a read is above the aim
+                _readAbove = false;
                 _emptyPasses = 0;          // and so does the growing burst
                 _turns = 0;                // and the looking around
                 return Enter(PulseState.Riding);
@@ -253,6 +260,7 @@ public sealed class PulseLoop
         var ranked = ring.Layers.Select(l => (l.Name, Share: read.Shares[l.Name])).OrderByDescending(x => x.Share).ToList();
         if (read.Layer is not { } layer)
         {
+            _readAbove = false;            // not sure where it is: no ride usable on this burst
             _log($"no layer on a calm frame (best {ranked[0].Name} {Percent(ranked[0].Share)}): riding a burst");
             return Enter(PulseState.Bursting);
         }
@@ -307,6 +315,7 @@ public sealed class PulseLoop
         var layer = RingTracker.Pick(ring, votes, Layer);
         if (layer is null)
         {
+            _readAbove = false;            // not sure where it is: no ride usable on this burst
             var best = votes.Count == 0 ? 0 : votes.Values.Max();
             _log($"no layer on a calm frame ({best} of {samples.Count} spots at best): riding a burst");
             return Enter(PulseState.Bursting);
@@ -338,6 +347,8 @@ public sealed class PulseLoop
         var number = LayerNumber(layer);
         var aim = _config.AimLayer;
         var aimName = _ring!.Layers[aim - 1].Name;
+        _readAbove = number < aim;
+        if (number >= aim) _reachedAim = true;
 
         if (number > aim)
         {
@@ -600,10 +611,11 @@ public sealed class PulseLoop
         return true;
     }
 
-    /// <summary>The ride usable when one is set, the last calm read was above the aim layer (none yet,
-    /// as at the top, is not) and its everyMs has passed since the last try; else null.</summary>
+    /// <summary>The ride usable when one is set, the last calm read named a layer above the aim layer
+    /// (none yet, as at the top, is not, and nor is a read with no layer), no read has reached the aim
+    /// layer or deeper since the last Go to Top, and its everyMs has passed since the last try; else null.</summary>
     private PulseUsable? RideDue(DateTimeOffset now) =>
-        _config.Usables?.Ride is { } ride && Layer is { } layer && LayerNumber(layer) < _config.AimLayer
+        _config.Usables?.Ride is { } ride && _readAbove && !_reachedAim
         && Due(_rideFired, ride, now)
             ? ride
             : null;
