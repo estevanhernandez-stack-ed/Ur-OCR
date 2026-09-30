@@ -16,8 +16,11 @@ public sealed record GetPlaybackRequest(string ContractVersion, string Method, s
 /// Ur Task's answer: State is running | finished | stopped | failed. On failed, Reason is
 /// check-failed, refused, aborted or error, and StepIndex is 1-based. Ok=false with Reason
 /// "unknown-playback" means the id is unknown or expired (kept 10 minutes after it ends).
+/// NoOutline (Ur Task 0.12.0, additive): on a finished ClearAt, the 1-based points that showed no
+/// outline. An older Ur Task never sends it, so it reads null: no memory, no error.
 /// </summary>
-public sealed record GetPlaybackResponse(bool Ok, string? State, string? Reason, string? Detail, int? StepIndex);
+public sealed record GetPlaybackResponse(bool Ok, string? State, string? Reason, string? Detail, int? StepIndex,
+    int[]? NoOutline = null);
 
 /// <summary>ClearAt's client size: the client the points were measured in. Ur Task sizes the window
 /// to it first, as it does for a recorded macro, then plays the points and the box unscaled.</summary>

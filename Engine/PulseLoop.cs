@@ -45,6 +45,10 @@ public sealed class PulseLoop
     public const double SettingReadMin = 0.75;
     /// <summary>With the account's SweepBlockPx set, a read over this share of it is ignored too.</summary>
     public const double SettingReadMax = 1.33;
+    /// <summary>How many passes a spot that showed no outline stays left out of ClearAt (fix 1,
+    /// live 2026-09-30: the same spots came back empty 11 to 14 passes running, about 0.6 s each).
+    /// After that it is tried again, and remembered again if it is still empty.</summary>
+    public const int NoOutlinePasses = 5;
 
     private readonly PulseConfig _config;
     private readonly RingDefinition? _ring;
@@ -73,6 +77,12 @@ public sealed class PulseLoop
     /// <summary>A sweep to judge on the next calm frame: the frame it was planned on, its path and the
     /// block size it moved by.</summary>
     private sealed record SweepCheck(FramePixels Before, IReadOnlyList<SweepPoint> Path, int Pitch);
+
+    /// <summary>A ClearAt point that showed no outline, in the finder's measured pixels, and the pass
+    /// that sent it.</summary>
+    private sealed record NoOutlineSpot(int X, int Y, int Pass);
+    private readonly List<NoOutlineSpot> _noOutline = new();   // cleared whenever the pulse rides (ForgetNoOutline)
+    private int _passNumber;                                   // ClearAt passes planned, for NoOutlinePasses
 
     private bool _macroDone;               // this state's macro has ended
     private DateTimeOffset? _until;        // this state's timer: set when its macro ends
@@ -241,12 +251,16 @@ public sealed class PulseLoop
 
         var targets = TargetFinder.Find(frame, pass);
         if (_pitchUnread) targets = NearestStone(targets, UnreadStonePoints);
+        var found = targets.Count;
+        targets = LeaveOutNoOutline(targets, pass.Pitch);
         _sweep = SweepFor(pass);
         if (_sweep is not null)
         {
             targets = targets.Where(t => t.Ore).ToList();   // the stone is swept, not pressed point by point
             _sweepFrame = frame;
         }
+        else if (targets.Count == 0 && found > 0)
+            return NothingInReach($"nothing in reach to clear (all {found} points showed no outline on a recent pass)");
         else if (targets.Count == 0)
         {
             _log($"{seen} is the target, but the ore finder has no point inside the window: riding a burst");
@@ -303,6 +317,7 @@ public sealed class PulseLoop
             Layer = layer;
             _progressAt = now;
             _turns = 0;
+            ForgetNoOutline();
         }
         var number = LayerNumber(layer);
         var aim = _config.AimLayer;
@@ -335,6 +350,46 @@ public sealed class PulseLoop
         _sweeping = false;
         return null;
     }
+
+    /// <summary>
+    /// The no-outline memory (fix 1): a new pass drops every ore point within half a block of a spot a
+    /// recent ClearAt said showed no outline, and logs how many once. Spots older than
+    /// NoOutlinePasses passes are forgotten first, so an emptied spot is tried again now and then.
+    /// Only ore points are dropped; stone points go as before. A sweep pass whose ore is all dropped
+    /// goes straight to the sweep (ClearNext).
+    /// </summary>
+    private IReadOnlyList<FinderTarget> LeaveOutNoOutline(IReadOnlyList<FinderTarget> targets, int pitch)
+    {
+        _passNumber++;
+        _noOutline.RemoveAll(s => _passNumber - s.Pass > NoOutlinePasses);
+        if (_noOutline.Count == 0) return targets;
+        var reach = pitch / 2.0;
+        var kept = targets.Where(t => !t.Ore || !_noOutline.Any(s => Near(s, t, reach))).ToList();
+        var dropped = targets.Count - kept.Count;
+        if (dropped > 0)
+            _log($"skipping {dropped} ore {(dropped == 1 ? "point" : "points")} that showed no outline on a recent pass");
+        return kept;
+    }
+
+    private static bool Near(NoOutlineSpot s, FinderTarget t, double reach)
+    {
+        double dx = t.X - s.X, dy = t.Y - s.Y;
+        return dx * dx + dy * dy <= reach * reach;
+    }
+
+    /// <summary>Remembers the points a finished ClearAt named (1-based into what this pass sent).
+    /// An Ur Task too old to name them sends none, and nothing is remembered.</summary>
+    private void RememberNoOutline(IReadOnlyList<int>? points)
+    {
+        if (points is null || _targets is not { } sent) return;
+        foreach (var n in points)
+            if (n >= 1 && n <= sent.Count)
+                _noOutline.Add(new NoOutlineSpot(sent[n - 1].X, sent[n - 1].Y, _passNumber));
+    }
+
+    /// <summary>The screen has moved under the remembered spots: the pulse rode (a ride, a burst, Go
+    /// to Top), the camera turned, or the layer changed.</summary>
+    private void ForgetNoOutline() => _noOutline.Clear();
 
     /// <summary>Every ore point and the first <paramref name="stone"/> stone points (they come nearest first).</summary>
     private static IReadOnlyList<FinderTarget> NearestStone(IReadOnlyList<FinderTarget> targets, int stone) =>
@@ -560,6 +615,7 @@ public sealed class PulseLoop
             // A ClearAt is one playback for the whole pass: finished counts as cleared progress (rock
             // cap, no burst) exactly as a Clear spot does; finished + skipped means nothing cleared.
             var name = _targets is null ? SpotName(_spot) : r.Label;
+            if (r.Status is CallStatus.Done or CallStatus.Skipped) RememberNoOutline(r.NoOutline);
             switch (r.Status)
             {
                 case CallStatus.Done:
@@ -599,6 +655,8 @@ public sealed class PulseLoop
     /// <summary>Always true, so Act can `return Enter(...)` and the tick carries on in the new state.</summary>
     private bool Enter(PulseState next, bool macroDone = false)
     {
+        if (next is PulseState.Riding or PulseState.Bursting or PulseState.GoingToTop or PulseState.Turning)
+            ForgetNoOutline();
         State = next;
         _burstMs = _config.BurstMs;       // a growing burst is set by RideLonger after this
         _macroDone = macroDone;

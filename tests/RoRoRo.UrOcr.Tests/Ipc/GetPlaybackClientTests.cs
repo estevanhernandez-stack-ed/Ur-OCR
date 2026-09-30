@@ -82,6 +82,23 @@ public class GetPlaybackClientTests
     }
 
     [Fact]
+    public void A_finished_ClearAt_reads_its_no_outline_points()
+    {
+        var r = JsonSerializer.Deserialize<GetPlaybackResponse>(
+            "{\"ok\":true,\"state\":\"finished\",\"noOutline\":[2,5]}", BridgeContract.Json)!;
+
+        Assert.Equal(new[] { 2, 5 }, r.NoOutline);
+    }
+
+    [Fact]
+    public void An_older_Ur_Task_without_noOutline_reads_null()
+    {
+        var r = JsonSerializer.Deserialize<GetPlaybackResponse>("{\"ok\":true,\"state\":\"finished\"}", BridgeContract.Json)!;
+
+        Assert.Null(r.NoOutline);
+    }
+
+    [Fact]
     public async Task An_unknown_playback_comes_back_as_a_refusal()
     {
         var (resp, _) = await RoundTrip(

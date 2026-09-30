@@ -18,7 +18,9 @@ public enum CallStatus
     Stop,
 }
 
-public sealed record CallResult(CallStatus Status, string Label, string? Detail = null);
+/// <param name="NoOutline">A finished ClearAt's 1-based points that showed no outline, as Ur Task
+/// sent them; null for anything else, or from an Ur Task too old to send them.</param>
+public sealed record CallResult(CallStatus Status, string Label, string? Detail = null, IReadOnlyList<int>? NoOutline = null);
 
 /// <summary>
 /// Runs one Ur Task macro (or one ClearAt call) for one account and follows it to its end, one tick at a time.
@@ -165,8 +167,8 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
                 return Waiting;
             case PlaybackStates.Finished:
                 return string.Equals(r.Reason, BridgeReasons.Skipped, StringComparison.OrdinalIgnoreCase)
-                    ? End(CallStatus.Skipped, r.Detail)
-                    : End(CallStatus.Done, r.Detail);
+                    ? End(CallStatus.Skipped, r.Detail, r.NoOutline)
+                    : End(CallStatus.Done, r.Detail, r.NoOutline);
             case PlaybackStates.Stopped:
                 return End(CallStatus.Stop, $"'{_label}' was stopped in Ur Task (Esc or StopMacro), so the pulse loop stops too.");
             case PlaybackStates.Failed when r.Reason == BridgeReasons.CheckFailed:
@@ -190,11 +192,11 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
 
     private CallResult Waiting => new(CallStatus.Waiting, _label);
 
-    private CallResult End(CallStatus status, string? detail)
+    private CallResult End(CallStatus status, string? detail, IReadOnlyList<int>? noOutline = null)
     {
         var label = _label;
         _start = null;
         _playbackId = null;
-        return new CallResult(status, label, detail);
+        return new CallResult(status, label, detail, noOutline);
     }
 }

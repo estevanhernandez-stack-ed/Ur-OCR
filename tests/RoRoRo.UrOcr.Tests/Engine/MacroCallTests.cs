@@ -92,6 +92,32 @@ public class MacroCallTests
         Assert.Equal(CallStatus.Skipped, (await Step(rig)).Status);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("skipped")]
+    public async Task A_finished_ClearAt_hands_on_the_points_that_showed_no_outline(string? reason)
+    {
+        var rig = BuildClearAt();
+        rig.Macros.Script(ScriptedMacros.ClearAtId, new GetPlaybackResponse(true, "finished", reason, null, null, new[] { 1, 3 }));
+
+        await Step(rig);
+        var end = await Step(rig);
+
+        Assert.Equal(new[] { 1, 3 }, end.NoOutline);
+    }
+
+    [Fact]
+    public async Task An_older_Ur_Task_hands_on_no_points()
+    {
+        var rig = BuildClearAt();
+
+        await Step(rig);
+        var end = await Step(rig);
+
+        Assert.Equal(CallStatus.Done, end.Status);
+        Assert.Null(end.NoOutline);
+    }
+
     [Fact]
     public async Task A_ClearAt_waits_until_the_account_is_in_front_right_before_it_starts()
     {
