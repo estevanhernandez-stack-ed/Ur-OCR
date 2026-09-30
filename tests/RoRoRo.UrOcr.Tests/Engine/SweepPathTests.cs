@@ -15,6 +15,24 @@ public class SweepPathTests
     private static List<(int I, int J)> Cells(IReadOnlyList<SweepPoint> path, int cx, int cy, int pitch) =>
         path.Select(p => ((p.X - cx) / pitch, (p.Y - cy) / pitch)).ToList();
 
+    /// <summary>Null when Ur Task's SweepPathMacro.Validate would take the path and step; otherwise the
+    /// rule it breaks: 3 to 256 points, a step of 8 to 240, every point inside the client and a whole
+    /// number of steps from the start, no repeat, and the end on the start block.</summary>
+    internal static string? UrTaskRefusal(IReadOnlyList<SweepPoint> path, int step, int clientW, int clientH)
+    {
+        if (path.Count is < 3 or > BridgeContract.MaxSweepPoints) return $"{path.Count} points";
+        if (step is < BridgeContract.MinSweepStep or > BridgeContract.MaxSweepStep) return $"step {step}";
+        var start = path[0];
+        for (var i = 0; i < path.Count; i++)
+        {
+            var p = path[i];
+            if (p.X < 0 || p.Y < 0 || p.X >= clientW || p.Y >= clientH) return $"point {i + 1} {p} is outside the client";
+            if ((p.X - start.X) % step != 0 || (p.Y - start.Y) % step != 0) return $"point {i + 1} {p} is off the {step} px lattice";
+            if (i > 0 && path[i - 1] == p) return $"point {i + 1} repeats";
+        }
+        return path[^1] == start ? null : $"ends at {path[^1]}, not the start {start}";
+    }
+
     private static int Ring((int I, int J) c) => Math.Max(Math.Abs(c.I), Math.Abs(c.J));
     private static int Steps((int I, int J) a, (int I, int J) b) => Math.Max(Math.Abs(a.I - b.I), Math.Abs(a.J - b.J));
 
@@ -162,6 +180,41 @@ public class SweepPathTests
         var cells = Cells(SweepPath.Build(400, 310, 180, 800, 599, nearSide: true, Hud), 400, 310, 180);
 
         Assert.Equal(new (int, int)[] { (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (0, -1), (2, 0), (2, -1), (1, 0) }, cells);
+    }
+
+    [Fact]
+    public void At_160_px_round_the_default_centre_the_path_is_ring_1_and_what_fits_of_ring_2()
+    {
+        // The owner's close zoom: 150 to 180 px blocks. With the real HUD mask only columns -1 to 2 and
+        // rows -1 to 1 fit (x 240 to 720, y 150 to 470); ring 2 keeps its right column, the rest of it
+        // is off the client or in the HUD. Row 1 sits on y 470, the hotbar line, which HudMask leaves in.
+        var path = SweepPath.Build(400, 310, 160, 800, 599, nearSide: true, Hud);
+        var cells = Cells(path, 400, 310, 160);
+
+        Assert.Equal(new[]
+        {
+            new SweepPoint(560, 310), new SweepPoint(560, 150), new SweepPoint(400, 150), new SweepPoint(240, 150),
+            new SweepPoint(240, 310), new SweepPoint(240, 470), new SweepPoint(400, 470), new SweepPoint(560, 470),
+            new SweepPoint(720, 470), new SweepPoint(720, 310), new SweepPoint(720, 150), new SweepPoint(560, 310),
+        }, path);
+        Assert.Null(UrTaskRefusal(path, 160, 800, 599));
+        Assert.DoesNotContain(path, p => Hud(p.X, p.Y));
+        Assert.DoesNotContain((0, 0), cells);
+        for (var k = 1; k < cells.Count; k++) Assert.False(SweepPath.CrossesCentre(cells[k - 1], cells[k]));
+    }
+
+    [Fact]
+    public void From_150_to_180_px_every_path_round_the_default_centre_is_one_Ur_Task_takes()
+    {
+        for (var pitch = 150; pitch <= 180; pitch++)
+            foreach (var nearSide in new[] { true, false })
+            {
+                var path = SweepPath.Build(400, 310, pitch, 800, 599, nearSide, Hud);
+
+                Assert.NotEmpty(path);
+                Assert.True(UrTaskRefusal(path, pitch, 800, 599) is null, $"pitch {pitch}: {UrTaskRefusal(path, pitch, 800, 599)}");
+                Assert.DoesNotContain(path, p => Hud(p.X, p.Y));
+            }
     }
 
     [Theory]
