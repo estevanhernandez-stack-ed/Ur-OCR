@@ -4,11 +4,13 @@ using RoRoRo.UrOcr.Storage;
 
 namespace RoRoRo.UrOcr.Engine;
 
-public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTop, Turning, Charging, Stopped }
+public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTop, Turning, Charging, SettingCamera, Stopped }
 
 /// <summary>
 /// One account's ore stop pulse (spec 2026-09-28). Riding: Auto Mine on for a ride (RideFor). Pausing: Auto
-/// Mine off, then SettleMs for the effects to clear. Reading: read the layer on that calm frame, by
+/// Mine off, then SettleMs for the effects to clear. SettingCamera: with a "Camera top-down" macro, the
+/// loop runs it at the start and after every Go to Top, before the ride (owner, 2026-09-30: a fresh
+/// client starts zoomed in and looking level, so Auto Mine digs nowhere and every read is dark). Reading: read the layer on that calm frame, by
 /// colour share around the character with an ore finder (LayerShare), else by the 8-spot vote.
 /// Above the aim layer: ride again. Past it: Go to Top. A ride's length depends on how far above the
 /// aim layer the pulse is known to be (live 2026-09-30: 8 stop-read cycles of a 2 s ride and 2.5 s of
@@ -186,6 +188,7 @@ public sealed class PulseLoop
                   ? ""
                   : $", sweeping stone ({config.SweepDwellMs} ms a point, near side {(config.SweepNearSide ? "on" : "off")}"
                     + (config.SweepBlockPx is { } px ? $", {px} px blocks without a read)" : ")"));
+        if (config.Macros?.CameraTopDown is not null) State = PulseState.SettingCamera;
         _log($"started: ring {config.RingId}, target layer {config.TargetLayer} ({mode}), clearing on {_ring!.Layers[config.AimLayer - 1].Name} with {how}"
              + UsablesLine(config.Usables));
         if (config.RideFirstMs != config.BurstMs || config.RideBurstFarMs != config.BurstMs)
@@ -267,6 +270,14 @@ public sealed class PulseLoop
                 _turns = 0;                // and the looking around
                 _rideMs = _config.RideFirstMs;   // no read yet, and the upper layers take a while
                 if (_rideMs != _config.BurstMs) _log($"at the top: riding {Seconds(_rideMs)} s before the first read");
+                return Enter(M.CameraTopDown is null ? PulseState.Riding : PulseState.SettingCamera);
+
+            case PulseState.SettingCamera:
+                if (!_macroDone)
+                {
+                    _log($"setting the camera ({PulseMacroNames.CameraTopDown})");
+                    return Begin(M.CameraTopDown!, PulseMacroNames.CameraTopDown);
+                }
                 return Enter(PulseState.Riding);
 
             case PulseState.Turning:
@@ -909,7 +920,7 @@ public sealed class PulseLoop
     /// <summary>Always true, so Act can `return Enter(...)` and the tick carries on in the new state.</summary>
     private bool Enter(PulseState next, bool macroDone = false)
     {
-        if (next is PulseState.Riding or PulseState.Bursting or PulseState.GoingToTop or PulseState.Turning or PulseState.Charging)
+        if (next is PulseState.Riding or PulseState.Bursting or PulseState.GoingToTop or PulseState.Turning or PulseState.Charging or PulseState.SettingCamera)
             ForgetNoOutline();
         if (next == PulseState.GoingToTop)
         {

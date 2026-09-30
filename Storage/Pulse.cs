@@ -11,9 +11,11 @@ public enum PulseMode { Top, OneAbove }
 /// <summary>Ur Task macro ids the loop runs, resolved from names at import. Clear holds one id per
 /// ring spot, index = ring order (N, NE, E, SE, S, SW, W, NW). CameraTurnLeft is optional: null (not
 /// in Ur Task, or a file from before it) and a pass with nothing in reach rides a burst without
-/// looking around first.</summary>
+/// looking around first. CameraTopDown is optional too: set, the pulse runs it at the start and
+/// after every Go to Top (pitch and zoom); null leaves the camera as it is.</summary>
 public sealed record PulseMacros(string AutoMineOff, string AutoMineOn, string GoToTop, IReadOnlyList<string> Clear,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CameraTurnLeft = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CameraTurnLeft = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CameraTopDown = null);
 
 /// <summary>
 /// One account's ore stop pulse (spec 2026-09-28, "Settings per account"). TargetLayer counts the
@@ -93,6 +95,8 @@ public static class PulseMacroNames
     public const string GoToTop = "Go to Top";
     /// <summary>Optional: a quarter turn of the camera, the character staying centred.</summary>
     public const string CameraTurnLeft = "Camera turn left";
+    /// <summary>Optional: the digging view, pitch and zoom, set from any camera.</summary>
+    public const string CameraTopDown = "Camera top-down";
     public static string Clear(string spot) => $"Clear spot {spot}";
 }
 

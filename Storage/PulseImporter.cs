@@ -51,7 +51,7 @@ public static class PulseImporter
             : $"usables.{key}.macro {u.Macro} is not one of Ur Task's macros: install it in Ur Task first.";
 
     /// <summary>Every macro the loop runs, by name, exactly one each (RingImporter.ResolveMacro rules).
-    /// The camera turn is optional: missing is null, two of that name are refused.</summary>
+    /// The camera turn and the camera top-down are optional: missing is null, two of a name are refused.</summary>
     public static PulseMacros Resolve(IReadOnlyList<UrTaskMacro> macros) => new(
         RingImporter.ResolveMacro(macros, PulseMacroNames.AutoMineOff),
         RingImporter.ResolveMacro(macros, PulseMacroNames.AutoMineOn),
@@ -59,5 +59,11 @@ public static class PulseImporter
         MeasuredRing.RingOrder.Select(n => RingImporter.ResolveMacro(macros, PulseMacroNames.Clear(n))).ToList(),
         macros.Any(x => string.Equals(x.Name, PulseMacroNames.CameraTurnLeft, StringComparison.OrdinalIgnoreCase))
             ? RingImporter.ResolveMacro(macros, PulseMacroNames.CameraTurnLeft)
-            : null);
+            : null,
+        Optional(macros, PulseMacroNames.CameraTopDown));
+
+    private static string? Optional(IReadOnlyList<UrTaskMacro> macros, string name) =>
+        macros.Any(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase))
+            ? RingImporter.ResolveMacro(macros, name)
+            : null;
 }

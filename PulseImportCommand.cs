@@ -50,6 +50,8 @@ internal static class PulseImportCommand
                 foreach (var p in pulses) lines.Add("  " + Describe(p, macros));
                 if (pulses.Any(p => p.Macros?.CameraTurnLeft is null))
                     lines.Add($"no {PulseMacroNames.CameraTurnLeft} macro: the pulse won't look around");
+                if (pulses.Any(p => p.Macros?.CameraTopDown is null))
+                    lines.Add($"no {PulseMacroNames.CameraTopDown} macro: the pulse won't set the camera, so set it by hand");
                 code = 0;
             }
             catch (Exception ex) when (ex is InvalidDataException or JsonException or IOException or UnauthorizedAccessException)
