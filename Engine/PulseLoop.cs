@@ -31,8 +31,9 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// everything it can and returns at the first wait. Nothing starts unless the account is in front,
 /// read again right before each macro; a playback already started is still followed.
 /// A clear or macro whose check could not run (CheckFailed) or that Ur Task lost (Lost) stops the loop.
-/// Usables (PulseUsables), each at most once per its everyMs: the ride usable fires at the start of a
-/// ride or burst only while the pulse is sure it is above the aim layer: the last calm read named a
+/// Usables (PulseUsables), each at most once per its everyMs: the ride usable fires in a
+/// ride or burst, right after its Auto Mine on has finished (not while standing still), and only with
+/// RideUsableRoomMs left in the burst, only while the pulse is sure it is above the aim layer: the last calm read named a
 /// layer above it (a read with no layer does not count), and no read has reached the aim layer or
 /// gone deeper since the last Go to Top (live 2026-09-30: a Rover fired on a no-layer read with black
 /// ore all round the character). The target usable fires when a read
@@ -43,6 +44,9 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 public sealed class PulseLoop
 {
     public const int MaxStepsPerTick = 12;
+
+    /// <summary>The least burst time left, after Auto Mine on, for the ride usable to fire.</summary>
+    public const int RideUsableRoomMs = 500;
     /// <summary>The smallest outline box sent: the smallest block PitchEstimator reads.</summary>
     public const int MinOutlineSide = 16;
     /// <summary>The longest burst a run of passes with nothing in reach grows to.</summary>
@@ -112,6 +116,7 @@ public sealed class PulseLoop
     private int _survivors;                                    // this pass's ore sent to ClearAt by the survivor rule, for the log
     private bool _freePathRefusedLogged;                       // "Ur Task refused the ore sweep" is logged once
 
+    private bool _rideTried;                // the ride usable was tried this burst
     private bool _macroDone;               // this state's macro has ended
     private DateTimeOffset? _until;        // this state's timer: set when its macro ends
     private readonly Queue<int> _queue = new();
@@ -206,8 +211,15 @@ public sealed class PulseLoop
         {
             case PulseState.Riding:
             case PulseState.Bursting:
-                if (!_macroDone && RideDue(now) is { } ride) return FireUsable("ride", ride, now);
                 if (!_macroDone) return Begin(M.AutoMineOn, PulseMacroNames.AutoMineOn);
+                // Auto Mine is on: drop the bomb now, not while standing still. Once per burst, and only
+                // with room before the burst ends, so Auto Mine off is never pushed past its time.
+                if (!_rideTried && _until is { } end && (end - now).TotalMilliseconds >= RideUsableRoomMs
+                    && RideDue(now) is { } ride)
+                {
+                    _rideTried = true;
+                    return FireUsable("ride", ride, now);
+                }
                 return now >= _until && Enter(PulseState.Pausing);
 
             case PulseState.Pausing:
@@ -715,7 +727,7 @@ public sealed class PulseLoop
         return true;
     }
 
-    /// <summary>A usable's call ended: logged, never a stop. The ride goes on to Auto Mine on; the
+    /// <summary>A usable's call ended: logged, never a stop. The ride burst goes on running; the
     /// target settles before the next read when it fired, and reads at once when it was skipped.</summary>
     private void OnUsableEnded(string kind, CallResult r)
     {
@@ -848,6 +860,7 @@ public sealed class PulseLoop
         State = next;
         _burstMs = _config.BurstMs;       // a growing burst is set by RideLonger after this
         _macroDone = macroDone;
+        _rideTried = false;
         _until = macroDone ? TimerFor(next) : null;
         return true;
     }

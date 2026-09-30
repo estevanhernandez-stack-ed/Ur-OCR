@@ -5,7 +5,7 @@ using Xunit;
 namespace RoRoRo.UrOcr.Tests.Engine;
 
 /// <summary>
-/// Usables: charges fired by hotbar-key macros. The ride usable fires at the start of a ride above
+/// Usables: charges fired by hotbar-key macros. The ride usable fires just after Auto Mine on, in a ride above
 /// the aim layer, the target usable before a pass on the aim layer; each at most once per everyMs,
 /// and a refusal skips that fire without stopping the loop. Every unscripted playback finishes on its
 /// first poll.
@@ -61,33 +61,75 @@ public class PulseLoopUsableTests
     private static int Count(Rig r, string id) => r.Macros.RunIds.Count(x => x == id);
 
     [Fact]
-    public async Task The_ride_usable_fires_at_the_start_of_a_ride_above_the_target()
+    public async Task The_ride_usable_fires_after_Auto_Mine_on_and_before_Auto_Mine_off()
     {
         var rig = Build(With(rideEvery: 5000), PulseFixtures.Navy);
 
-        await FirstRead(rig);
-        Assert.Equal(new[] { "id-on", "id-off", "id-rover" }, rig.Macros.RunIds);   // before Auto Mine on
+        await FirstRead(rig);             // t = 3 s: the ride begins with Auto Mine on, no usable yet
+        Assert.Equal(new[] { "id-on", "id-off", "id-on" }, rig.Macros.RunIds);
+
+        await Tick(rig);                  // Auto Mine on finished: the bomb drops while it runs
+        Assert.Equal(new[] { "id-on", "id-off", "id-on", "id-rover" }, rig.Macros.RunIds);
+        Assert.Equal(new[] { "42" }, rig.Macros.Runs[3].Targets);
 
         await Tick(rig);
-
-        Assert.Equal(new[] { "id-on", "id-off", "id-rover", "id-on" }, rig.Macros.RunIds);
-        Assert.Equal(new[] { "42" }, rig.Macros.Runs[2].Targets);
         Assert.Contains("fired usable ride (macro id-rover)", rig.Log);
         Assert.Equal(PulseState.Riding, rig.Loop.State);
+
+        rig.Clock.Advance(2000);
+        await Tick(rig);                  // the burst is over: Auto Mine off
+        Assert.Equal(new[] { "id-on", "id-off", "id-on", "id-rover", "id-off" }, rig.Macros.RunIds);
+    }
+
+    [Fact]
+    public async Task The_burst_still_ends_on_time_when_the_ride_usable_fires()
+    {
+        var rig = Build(With(rideEvery: 5000), PulseFixtures.Navy);
+        await FirstRead(rig);
+        await Tick(rig);                  // Auto Mine on finished at t = 3 s (burst ends t = 5 s); rover begins
+        await Tick(rig);
+
+        rig.Clock.Advance(1999);
+        await Tick(rig);
+        Assert.Equal(PulseState.Riding, rig.Loop.State);
+        Assert.Equal("id-rover", rig.Macros.RunIds.Last());
+
+        rig.Clock.Advance(1);
+        await Tick(rig);
+        Assert.Equal("id-off", rig.Macros.RunIds.Last());
+        Assert.Equal(1, Count(rig, "id-rover"));   // once per burst
+    }
+
+    [Fact]
+    public async Task The_ride_usable_is_skipped_when_the_burst_has_no_room_for_it()
+    {
+        var config = With(rideEvery: 5000) with { BurstMs = PulseLoop.RideUsableRoomMs - 100 };
+        var rig = Build(config, PulseFixtures.Navy);
+
+        await FirstRead(rig);
+        await Tick(rig);
+        rig.Clock.Advance(config.BurstMs);
+        await Tick(rig);
+
+        Assert.Equal(0, Count(rig, "id-rover"));
+        Assert.Equal("id-off", rig.Macros.RunIds.Last());
     }
 
     [Fact]
     public async Task The_ride_usable_fires_at_most_once_per_everyMs()
     {
         var rig = Build(With(rideEvery: 5000), PulseFixtures.Navy);
-        await FirstRead(rig);             // t = 3 s: fired
+        await FirstRead(rig);             // t = 3 s
+        await Tick(rig);                  // fired
         await Tick(rig);
 
-        await Cycle(rig);                 // t = 6 s: 3 s since, not yet
+        await Cycle(rig);                 // burst ends, off, settle, read (t = 6 s), ride begins: 3 s since, not yet
+        await Tick(rig);
         Assert.Equal(1, Count(rig, "id-rover"));
         Assert.Equal("id-on", rig.Macros.RunIds.Last());
 
-        await Cycle(rig);                 // t = 9 s: 6 s since, fires again
+        await Cycle(rig);                 // t = 9 s: 6 s since, fires again once Auto Mine is on
+        await Tick(rig);
         Assert.Equal(2, Count(rig, "id-rover"));
         Assert.Equal("id-rover", rig.Macros.RunIds.Last());
     }
@@ -296,20 +338,20 @@ public class PulseLoopUsableTests
     {
         var rig = Build(With(rideEvery: 5000), PulseFixtures.Navy);
 
-        await FirstRead(rig);             // t = 3 s: fired
-        await Tick(rig);
-        await Tick(rig);
-        rig.Clock.Advance(2000);
-        await Tick(rig);
-        await Tick(rig);
-        rig.Clock.Advance(4000);          // t = 9 s: due again
+        await FirstRead(rig);             // t = 3 s: Auto Mine on begun
         rig.Macros.RunReplies.Enqueue(ScriptedMacros.Refusal(reason));
+        await Tick(rig);                  // Auto Mine on finished: the ride usable is refused
         await Tick(rig);
 
         Assert.Equal(PulseState.Riding, rig.Loop.State);
-        Assert.Equal(new[] { "id-rover", "id-on" }, rig.Macros.RunIds.TakeLast(2));
+        Assert.Equal("id-rover", rig.Macros.RunIds.Last());
         Assert.Contains(rig.Log, l => l.StartsWith("skipped usable ride (macro id-rover)") && l.Contains(reason));
         Assert.DoesNotContain(rig.Log, l => l.Contains("trying again"));
+
+        rig.Clock.Advance(2000);
+        await Tick(rig);                  // the burst ends on time all the same
+        Assert.Equal("id-off", rig.Macros.RunIds.Last());
+        Assert.Equal(1, Count(rig, "id-rover"));
     }
 
     [Fact]
@@ -320,10 +362,13 @@ public class PulseLoopUsableTests
 
         await FirstRead(rig);
         await Tick(rig);
+        await Tick(rig);
 
         Assert.Equal(PulseState.Riding, rig.Loop.State);
-        Assert.Equal("id-on", rig.Macros.RunIds.Last());
         Assert.Contains(rig.Log, l => l.StartsWith("skipped usable ride (macro id-rover)"));
+        rig.Clock.Advance(2000);
+        await Tick(rig);
+        Assert.Equal("id-off", rig.Macros.RunIds.Last());
     }
 
     [Fact]
