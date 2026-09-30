@@ -17,7 +17,12 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// Task would take, the account's SweepBlockPx), the stone is swept instead (spec 2026-09-29):
 /// ClearAt with the ore points only, then one SweepPath around the character, then a settle and a
 /// read; the next read judges the sweep (SweepChange), and a sweep that changed nothing is a pass
-/// with nothing in reach. Ur Task skips a point or spot with no
+/// with nothing in reach. On such a pass with 2 or more ore points the ore is swept too (live
+/// 2026-09-30: 24 ore points through ClearAt took 35 s though most broke in one 0.3 s hold): one
+/// free-path SweepPath over the ore first (SweepPath.Ore, OreSweepDwellMs a point), then ClearAt for
+/// the ore it could not take and the ore that survived the last pass's ore sweep, then the stone
+/// sweep; the next read judges both sweeps. An Ur Task that refuses the free path clears that pass's
+/// ore through ClearAt (logged once). Ur Task skips a point or spot with no
 /// outline. A pass that cleared something settles and reads again; a pass that cleared nothing
 /// first turns the camera (Turning, "Camera turn left", then SettleMs and a read) up to MaxTurns
 /// times since the last progress, then rides a burst (Bursting), twice as long for each such burst
@@ -91,6 +96,21 @@ public sealed class PulseLoop
     private sealed record NoOutlineSpot(int X, int Y, int Pass);
     private readonly List<NoOutlineSpot> _noOutline = new();   // cleared whenever the pulse rides (ForgetNoOutline)
     private int _passNumber;                                   // ClearAt passes planned, for NoOutlinePasses
+
+    // The ore sweep. Survivor rule: when an ore sweep finishes, the ore points on it are remembered
+    // (_sweptOre, measured px). The next pass planned sends every ore point within half a block of a
+    // remembered one to ClearAt instead of the ore sweep, and forgets the memory; it holds only the
+    // last ore sweep's points. A ride, burst, Go to Top, camera turn, target usable or new layer wipes
+    // it (ForgetNoOutline), since the view has moved.
+    private readonly List<(int X, int Y)> _sweptOre = new();
+    private IReadOnlyList<FinderTarget>? _oreSweepTargets;     // this pass's ore on the ore sweep
+    private IReadOnlyList<FinderTarget>? _oreAll;              // this pass's ore in the finder's order, for a refused ore sweep
+    private IReadOnlyList<SweepPoint>? _oreSweep;              // this pass's ore sweep path; null for none
+    private bool _oreSweeping;                                 // the ore sweep's call is in flight
+    private bool _oreSweepEnded;                               // this pass's ore sweep has ended (or was refused)
+    private bool _oreSwept;                                    // this pass's ore sweep finished: judge it with the stone
+    private int _survivors;                                    // this pass's ore sent to ClearAt by the survivor rule, for the log
+    private bool _freePathRefusedLogged;                       // "Ur Task refused the ore sweep" is logged once
 
     private bool _macroDone;               // this state's macro has ended
     private DateTimeOffset? _until;        // this state's timer: set when its macro ends
@@ -277,10 +297,15 @@ public sealed class PulseLoop
         var found = targets.Count;
         targets = LeaveOutNoOutline(targets, pass.Pitch);
         _sweep = SweepFor(pass);
+        _oreSweep = null;
+        _oreSweepTargets = null;
+        _survivors = 0;
+        if (_sweep is null) _sweptOre.Clear();              // no sweep, no ore sweep: nothing to survive it
         if (_sweep is not null)
         {
             targets = targets.Where(t => t.Ore).ToList();   // the stone is swept, not pressed point by point
             _sweepFrame = frame;
+            targets = PlanOreSweep(targets, pass);          // the ore it sweeps leaves the ClearAt list
         }
         else if (targets.Count == 0 && found > 0)
             return NothingInReach($"nothing in reach to clear (all {found} points showed no outline on a recent pass)");
@@ -291,10 +316,12 @@ public sealed class PulseLoop
         }
         _targets = targets;
         _pass = pass;
-        var ore = targets.Count(t => t.Ore);
+        var ore = targets.Count(t => t.Ore) + (_oreSweepTargets?.Count ?? 0);
         _log(_sweep is { } path
             ? $"{seen} is the target: {ore} ore {(ore == 1 ? "point" : "points")}, then a sweep of {path.Count} points"
             : $"{seen} is the target: clearing at {targets.Count} points ({ore} ore, {targets.Count - ore} stone)");
+        if (_survivors > 0) _log($"ore spots surviving a sweep go to ClearAt: {_survivors}");
+        if (_oreSweepTargets is { } swept) _log($"ore sweep of {swept.Count} points");
         return Enter(PulseState.Clearing);
     }
 
@@ -375,7 +402,43 @@ public sealed class PulseLoop
         _clearAtEnded = false;
         _sweepEnded = false;
         _sweeping = false;
+        _oreSweepEnded = false;
+        _oreSweeping = false;
+        _oreSwept = false;
         return null;
+    }
+
+    /// <summary>
+    /// Splits a sweep pass's ore (after the no-outline filter) between the ore sweep and ClearAt, and
+    /// returns what goes to ClearAt. Survivors (the survivor rule at _sweptOre) go to ClearAt, which
+    /// holds until the ore breaks. The rest are swept when 2 or more of them make a path; a point the
+    /// path could not take (on the centre block, or no way round it) goes to ClearAt, and with fewer
+    /// than 2 there is no ore sweep and they all go to ClearAt as before.
+    /// </summary>
+    private IReadOnlyList<FinderTarget> PlanOreSweep(IReadOnlyList<FinderTarget> ore, FinderSetup pass)
+    {
+        var reach = pass.Pitch / 2.0;
+        var survivors = ore.Where(t => _sweptOre.Any(s => Near(s, t, reach))).ToList();
+        _sweptOre.Clear();
+        var fresh = ore.Where(t => !survivors.Contains(t)).ToList();
+        _survivors = survivors.Count;
+        if (fresh.Count < 2) return ore;
+
+        var plan = SweepPath.Ore(fresh.Select(t => (t.X, t.Y)).ToList(), _sweep![0], pass.CenterX, pass.CenterY, _sweepStep,
+            pass.ClientW, pass.ClientH, (x, y) => HudMask.Contains(x, y, pass.ClientW, pass.ClientH));
+        if (plan.Path.Count == 0) return ore;
+
+        var swept = plan.Swept.Select(i => fresh[i]).ToList();
+        _oreAll = ore;
+        _oreSweep = plan.Path;
+        _oreSweepTargets = swept;
+        return survivors.Concat(fresh.Where(t => !swept.Contains(t))).ToList();
+    }
+
+    private static bool Near((int X, int Y) s, FinderTarget t, double reach)
+    {
+        double dx = t.X - s.X, dy = t.Y - s.Y;
+        return dx * dx + dy * dy <= reach * reach;
     }
 
     /// <summary>
@@ -414,9 +477,14 @@ public sealed class PulseLoop
                 _noOutline.Add(new NoOutlineSpot(sent[n - 1].X, sent[n - 1].Y, _passNumber));
     }
 
-    /// <summary>The screen has moved under the remembered spots: the pulse rode (a ride, a burst, Go
-    /// to Top), the camera turned, or the layer changed.</summary>
-    private void ForgetNoOutline() => _noOutline.Clear();
+    /// <summary>The screen has moved under the remembered spots (no outline, and the last ore sweep's):
+    /// the pulse rode (a ride, a burst, Go to Top), the camera turned, a target usable fired, or the
+    /// layer changed.</summary>
+    private void ForgetNoOutline()
+    {
+        _noOutline.Clear();
+        _sweptOre.Clear();
+    }
 
     /// <summary>Every ore point and the first <paramref name="stone"/> stone points (they come nearest first).</summary>
     private static IReadOnlyList<FinderTarget> NearestStone(IReadOnlyList<FinderTarget> targets, int stone) =>
@@ -513,6 +581,12 @@ public sealed class PulseLoop
         {
             var f = _pass!;
             var guard = f.Guard is { } g ? new ClearAtGuard(g.X, g.Y, g.W, g.H, g.Expect, g.Tolerance) : null;
+            if (_oreSweep is { } orePath && !_oreSweepEnded)
+            {
+                _oreSweeping = true;                       // only on a sweep pass, which has a guard
+                _call.BeginSweep(new ClearAtClient(f.ClientW, f.ClientH), orePath, 0, _config.OreSweepDwellMs, guard!, freePath: true);
+                return true;
+            }
             if (!_clearAtEnded && targets.Count > 0)      // a sweep pass with no ore goes straight to the sweep
             {
                 _call.BeginClearAt(new ClearAtClient(f.ClientW, f.ClientH),
@@ -573,7 +647,10 @@ public sealed class PulseLoop
             _log($"cleared ore and swept {path.Count} points: reading again");
             return Enter(PulseState.Pausing, macroDone: true);
         }
-        _sweepCheck = new SweepCheck(_sweepFrame!, path, _sweepStep);
+        // The ore sweep's blocks are judged with the stone's: the stone path first, so its start block,
+        // where the pointer rests and its hover outline shows, stays the one left out.
+        var judged = _oreSwept && _oreSweep is { } ore ? path.Concat(ore).ToList() : path;
+        _sweepCheck = new SweepCheck(_sweepFrame!, judged, _sweepStep);
         _log($"swept {path.Count} points: reading again");
         return Enter(PulseState.Pausing, macroDone: true);
     }
@@ -669,6 +746,18 @@ public sealed class PulseLoop
             OnUsableEnded(kind, r);
             return;
         }
+        if (_oreSweeping && r.Status == CallStatus.Stop && r.Reason == BridgeReasons.Refused)
+        {
+            // An Ur Task older than free paths (it refuses step 0) or one that refuses this path: the ore
+            // goes through ClearAt this pass, as before the ore sweep, and the pass carries on.
+            _oreSweeping = false;
+            _oreSweepEnded = true;
+            if (!_freePathRefusedLogged)
+                _log($"Ur Task refused the ore sweep ({r.Detail}): clearing the ore through ClearAt instead");
+            _freePathRefusedLogged = true;
+            _targets = _oreAll;                            // every ore point, in the finder's order
+            return;
+        }
         if (r.Status == CallStatus.Stop)
         {
             Stop(r.Detail ?? $"'{r.Label}' could not run.");
@@ -684,6 +773,22 @@ public sealed class PulseLoop
 
         if (State == PulseState.Clearing)
         {
+            if (_oreSweeping)
+            {
+                // Held the whole way like the stone sweep: whether it broke the ore is read off the next
+                // calm frame, and ore found there again goes to ClearAt (the survivor rule).
+                _oreSweeping = false;
+                _oreSweepEnded = true;
+                if (r.Status == CallStatus.CheckFailed)
+                {
+                    Stop($"'{r.Label}' stopped at its check ({r.Detail}). Something may be over the game, such as a " +
+                         "menu or a player's profile, so the pulse loop stopped rather than click it.");
+                    return;
+                }
+                _oreSwept = true;
+                foreach (var t in _oreSweepTargets!) _sweptOre.Add((t.X, t.Y));
+                return;
+            }
             if (_sweeping)
             {
                 // The sweep holds the button the whole way, so it always presses: only a stop matters here.

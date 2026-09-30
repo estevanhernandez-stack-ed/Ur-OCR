@@ -9,7 +9,8 @@ namespace RoRoRo.UrOcr.Tests.Engine;
 /// The no-outline memory (ore-stop pulse, fix 1): a finished ClearAt names the points that showed no
 /// outline, and the next passes leave those spots out until the pulse rides or PulseLoop.NoOutlinePasses
 /// passes go by. The rig is the sweep rig (32 px blocks, a guard), with two crystals in reach: one
-/// right of the character (the "east" points) and one left of it.
+/// right of the character (the "east" points) and one left of it. Its Ur Task refuses free paths, so
+/// the ore goes through ClearAt as it did before the ore sweep (PulseLoopOreSweepTests has the sweep).
 /// </summary>
 public class PulseLoopNoOutlineTests
 {
@@ -32,7 +33,7 @@ public class PulseLoopNoOutlineTests
 
     private static Rig Build(FramePixels frame)
     {
-        var macros = new ScriptedMacros();
+        var macros = new ScriptedMacros { RefuseFreePath = true };
         var reader = new ScriptedReader { Next = ScriptedReader.All(PulseFixtures.Grey), Frame = frame };
         var clock = new PulseClock();
         var log = new List<string>();

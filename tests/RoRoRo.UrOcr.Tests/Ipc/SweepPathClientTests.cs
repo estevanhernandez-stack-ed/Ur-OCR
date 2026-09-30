@@ -63,6 +63,26 @@ public class SweepPathClientTests
     }
 
     [Fact]
+    public void A_free_path_request_adds_freePath_with_step_0()
+    {
+        // The ore sweep: points wherever the ore is, so off any lattice. Ur Task's SweepPathMacroTests
+        // takes freePath with the step left out or 0; an Ur Task without freePath ignores the field and
+        // refuses step 0, which Ur OCR takes as "no free paths" and clears the ore through ClearAt.
+        var request = BridgeContract.ForSweepPath("42", new ClearAtClient(800, 599),
+            new[] { new SweepPoint(437, 281), new SweepPoint(461, 263), new SweepPoint(353, 322), new SweepPoint(437, 281) },
+            0, 400, new ClearAtGuard(55, 289, 3, 3, new Rgb(255, 19, 90), 30), freePath: true);
+
+        Assert.Equal(
+            "{\"contractVersion\":\"1.0\",\"method\":\"SweepPath\",\"callerPluginId\":\"626labs.ur-ocr\",\"target\":\"42\"," +
+            "\"client\":{\"w\":800,\"h\":599}," +
+            "\"path\":[{\"x\":437,\"y\":281},{\"x\":461,\"y\":263},{\"x\":353,\"y\":322},{\"x\":437,\"y\":281}]," +
+            "\"step\":0,\"dwellMs\":400," +
+            "\"guard\":{\"x\":55,\"y\":289,\"w\":3,\"h\":3,\"expect\":{\"r\":255,\"g\":19,\"b\":90},\"tolerance\":30}," +
+            "\"freePath\":true}",
+            JsonSerializer.Serialize(request, BridgeContract.Json));
+    }
+
+    [Fact]
     public async Task Sends_SweepPath_and_returns_the_playback_id()
     {
         var (resp, req) = await RoundTrip(

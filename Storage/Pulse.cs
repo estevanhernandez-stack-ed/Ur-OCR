@@ -22,6 +22,7 @@ public sealed record PulseMacros(string AutoMineOff, string AutoMineOn, string G
 /// SweepBlockPx is the block size the sweep steps by when none is read off the frame (the read tops
 /// out near 100 px, and a block down a shaft is 150 to 180 px), and the pass's block size whenever a
 /// read lands far from it (PulseLoop.SettingReadMin/Max); null, the default, sweeps only on a read.
+/// OreSweepDwellMs is how long the ore sweep holds on each ore point (default 400 ms, the same range).
 /// Usables are optional charges fired by Ur Task hotbar-key macros (PulseUsables); null, the
 /// default, fires none. Stored in triggers.json under "pulses"; missing keys load as the spec defaults.
 /// </summary>
@@ -38,8 +39,12 @@ public sealed record PulseConfig(
     int SweepDwellMs = PulseConfig.DefaultSweepDwellMs,
     bool SweepNearSide = true,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? SweepBlockPx = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PulseUsables? Usables = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PulseUsables? Usables = null,
+    int OreSweepDwellMs = PulseConfig.DefaultOreSweepDwellMs)
 {
+    /// <summary>How long the ore sweep holds on each ore point: most ore broke in one 0.3 s hold with
+    /// damage boosters (live 2026-09-30); what survives goes to ClearAt on the next pass.</summary>
+    public const int DefaultOreSweepDwellMs = 400;
     /// <summary>How long the sweep holds on each block (owner decision 2): the main breaks a
     /// bottom-layer block in about 0.3 s; a weaker pickaxe needs longer.</summary>
     public const int DefaultSweepDwellMs = 400;

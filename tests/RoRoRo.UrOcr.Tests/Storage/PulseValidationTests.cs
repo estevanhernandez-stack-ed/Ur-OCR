@@ -84,6 +84,20 @@ public class PulseValidationTests
     }
 
     [Theory]
+    [InlineData(49)]
+    [InlineData(5001)]
+    [InlineData(0)]
+    public void The_ore_sweep_dwell_must_be_in_range(int dwell) =>
+        Assert.Contains($"oreSweepDwellMs must be 50 to 5000, not {dwell}", Check(Pulse() with { OreSweepDwellMs = dwell }));
+
+    [Fact]
+    public void The_ore_sweep_dwell_limits_are_valid()
+    {
+        Assert.Null(Check(Pulse() with { OreSweepDwellMs = 50 }));
+        Assert.Null(Check(Pulse() with { OreSweepDwellMs = 5000 }));
+    }
+
+    [Theory]
     [InlineData(7)]
     [InlineData(241)]
     [InlineData(0)]

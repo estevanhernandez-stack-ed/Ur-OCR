@@ -53,8 +53,19 @@ internal sealed class ScriptedMacros : IMacroRunClient
     /// <summary>Answers to SweepPath, used before RunReplies and the default accept.</summary>
     public Queue<RunMacroResponse> SweepReplies { get; } = new();
 
+    /// <summary>Answer a free-path SweepPath (the ore sweep) as an Ur Task older than free paths does:
+    /// refused, listed in RefusedFreePaths rather than Sweeps.</summary>
+    public bool RefuseFreePath { get; set; }
+    public List<SweepPathRequest> RefusedFreePaths { get; } = new();
+
     public Task<RunMacroResponse> SweepPathAsync(SweepPathRequest request, CancellationToken ct)
     {
+        if (RefuseFreePath && request.FreePath == true)
+        {
+            RefusedFreePaths.Add(request);
+            return Task.FromResult(new RunMacroResponse(false, null, false, BridgeReasons.Refused,
+                "SweepPath needs a step of 8 to 240 px; got 0."));
+        }
         Sweeps.Add(request);
         if (SweepReplies.Count == 0) return RunAsync(SweepId, new[] { request.Target }, null, ct);
         Runs.Add((SweepId, new[] { request.Target }, null));

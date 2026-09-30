@@ -59,6 +59,8 @@ public static class PulseValidation
             return $"rockCapMinutes must be 1 to {MaxRockCapMinutes}, not {p.RockCapMinutes}.";
         if (p.SweepDwellMs < MinSweepDwellMs || p.SweepDwellMs > MaxSweepDwellMs)
             return $"sweepDwellMs must be {MinSweepDwellMs} to {MaxSweepDwellMs}, not {p.SweepDwellMs}.";
+        if (p.OreSweepDwellMs < MinSweepDwellMs || p.OreSweepDwellMs > MaxSweepDwellMs)
+            return $"oreSweepDwellMs must be {MinSweepDwellMs} to {MaxSweepDwellMs}, not {p.OreSweepDwellMs}.";
         if (p.SweepBlockPx is < MinSweepBlockPx or > MaxSweepBlockPx)
             return $"sweepBlockPx must be {MinSweepBlockPx} to {MaxSweepBlockPx} (the step Ur Task takes), not {p.SweepBlockPx}.";
         if (FinderFor(ring, p.AimLayer) is { } finder && finder.Validate() is { } finderProblem)

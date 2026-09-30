@@ -144,12 +144,12 @@ public class PulseImporterTests
         var file = Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".pulse.json");
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         File.WriteAllText(file, "{\"schema\":1,\"pulses\":[{\"accountUserId\":42,\"ringId\":\"mine8\",\"targetLayer\":2,"
-            + "\"sweepDwellMs\":600,\"sweepNearSide\":false,\"sweepBlockPx\":160}]}");
+            + "\"sweepDwellMs\":600,\"sweepNearSide\":false,\"sweepBlockPx\":160,\"oreSweepDwellMs\":300}]}");
         var store = StoreWithRing();
 
         var p = Assert.Single(PulseImporter.Build(PulseFile.Load(file), store.Rings, store.All, Macros()));
 
-        Assert.Equal((600, false, (int?)160), (p.SweepDwellMs, p.SweepNearSide, p.SweepBlockPx));
+        Assert.Equal((600, false, (int?)160, 300), (p.SweepDwellMs, p.SweepNearSide, p.SweepBlockPx, p.OreSweepDwellMs));
     }
 
     [Fact]

@@ -3,6 +3,13 @@ using RoRoRo.UrOcr.Storage;
 
 namespace RoRoRo.UrOcr.Engine;
 
+/// <summary>An ore sweep's path (empty when none) and the indexes, into the ore points it was given,
+/// of the points on it; the rest go to ClearAt.</summary>
+public sealed record OreSweep(IReadOnlyList<SweepPoint> Path, IReadOnlyList<int> Swept)
+{
+    public static readonly OreSweep None = new(Array.Empty<SweepPoint>(), Array.Empty<int>());
+}
+
 /// <summary>
 /// The sweep's path (ore-stop sweep spec, "The path"): square rings around the character, one block
 /// apart, from ring 1 out to <see cref="Rings"/>, in spiral order, starting and ending on the start
@@ -71,7 +78,10 @@ public static class SweepPath
     /// <summary>True when the straight move from a to b passes through the centre block's inside (the
     /// square of half a block around (0, 0)). Touching a corner is not passing through. Liang-Barsky
     /// clipping of the segment against that square.</summary>
-    internal static bool CrossesCentre((int I, int J) a, (int I, int J) b)
+    internal static bool CrossesCentre((int I, int J) a, (int I, int J) b) => CrossesCentre(((double)a.I, (double)a.J), ((double)b.I, (double)b.J));
+
+    /// <summary>The same test for points anywhere, in block units (fractions of a block) from the centre.</summary>
+    internal static bool CrossesCentre((double I, double J) a, (double I, double J) b)
     {
         double t0 = 0, t1 = 1;
         double dx = b.I - a.I, dy = b.J - a.J;
@@ -87,6 +97,93 @@ public static class SweepPath
             if (t0 > t1) return false;
         }
         return t1 - t0 > 1e-9;
+    }
+
+    /// <summary>
+    /// The ore sweep (live 2026-09-30: 24 ore points through ClearAt took 35 s, most breaking in one
+    /// 0.3 s hold): the ore points as one held drag, a free path Ur Task takes off the block lattice.
+    /// It starts on the ore point nearest <paramref name="startBlock"/> (the stone sweep's start),
+    /// goes to the nearest point not yet visited each time, and closes on its first point, where the
+    /// button comes up. A point on the centre block (within half a block both ways) is never swept. A
+    /// straight move that would pass through the centre block goes round it by the shortest ring-1
+    /// block that clears it both ways (inside the client's margin, off the HUD); with none, the point
+    /// is dropped, or on the way home the last point is dropped until the move home clears it. Fewer
+    /// than 2 ore points on the path: no path. Every point stays in the measured client's pixels. Pure.
+    /// </summary>
+    public static OreSweep Ore(IReadOnlyList<(int X, int Y)> ore, SweepPoint startBlock, int centerX, int centerY,
+        int pitch, int clientW, int clientH, Func<int, int, bool> masked)
+    {
+        if (pitch < 1 || ore.Count < 2) return OreSweep.None;
+        (double I, double J) Block((int X, int Y) p) => ((p.X - centerX) / (double)pitch, (p.Y - centerY) / (double)pitch);
+        bool OnCentre((int X, int Y) p) { var (i, j) = Block(p); return Math.Abs(i) <= 0.5 && Math.Abs(j) <= 0.5; }
+        double Px((int X, int Y) a, (int X, int Y) b) => Math.Sqrt((double)(a.X - b.X) * (a.X - b.X) + (double)(a.Y - b.Y) * (a.Y - b.Y));
+
+        // Ring-1 blocks a detour may use: inside the margin and off the game's buttons.
+        var ring1 = new List<(int X, int Y)>();
+        for (var j = -1; j <= 1; j++)
+            for (var i = -1; i <= 1; i++)
+            {
+                if (i == 0 && j == 0) continue;
+                var (x, y) = (centerX + i * pitch, centerY + j * pitch);
+                if (x >= EdgeMarginPx && y >= EdgeMarginPx && x <= clientW - 1 - EdgeMarginPx && y <= clientH - 1 - EdgeMarginPx
+                    && !masked(x, y))
+                    ring1.Add((x, y));
+            }
+
+        // Nearest neighbour from the ore point nearest the start block.
+        var left = Enumerable.Range(0, ore.Count).Where(k => !OnCentre(ore[k])).ToList();
+        if (left.Count < 2) return OreSweep.None;
+        var start = (startBlock.X, startBlock.Y);
+        var order = new List<int>();
+        var at = start;
+        while (left.Count > 0)
+        {
+            var next = left.MinBy(k => Px(at, ore[k]));
+            left.Remove(next);
+            order.Add(next);
+            at = ore[next];
+        }
+
+        // Each step is a point and whether it is ore (its index) or a detour (-1).
+        var path = new List<((int X, int Y) P, int Ore)> { (ore[order[0]], order[0]) };
+        bool Append((int X, int Y) next, int index)
+        {
+            var last = path[^1].P;
+            if (next == last) return false;
+            if (!CrossesCentre(Block(last), Block(next)))
+            {
+                path.Add((next, index));
+                return true;
+            }
+            (int X, int Y)? via = null;
+            var best = double.MaxValue;
+            foreach (var w in ring1)
+            {
+                if (w == last || w == next || CrossesCentre(Block(last), Block(w)) || CrossesCentre(Block(w), Block(next))) continue;
+                var length = Px(last, w) + Px(w, next);
+                if (length < best)
+                {
+                    best = length;
+                    via = w;
+                }
+            }
+            if (via is not { } v) return false;
+            path.Add((v, -1));
+            path.Add((next, index));
+            return true;
+        }
+
+        foreach (var k in order.Skip(1))
+        {
+            if (path.Count > MaxPoints - 4) break;     // room for a detour here and one on the way home
+            Append(ore[k], k);                          // false: dropped, it goes to ClearAt
+        }
+        var first = path[0].P;
+        while (path.Count > 1 && !Append(first, order[0])) path.RemoveAt(path.Count - 1);
+
+        var swept = path.Take(path.Count - 1).Where(s => s.Ore >= 0).Select(s => s.Ore).Distinct().ToList();
+        if (path.Count < MinPoints || swept.Count < 2) return OreSweep.None;
+        return new OreSweep(path.Select(s => new SweepPoint(s.P.X, s.P.Y)).ToList(), swept);
     }
 
     /// <summary>Rings 1 to <paramref name="rings"/> in spiral order from (1, 0).</summary>

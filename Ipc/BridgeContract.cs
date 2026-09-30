@@ -59,9 +59,13 @@ public sealed record SweepPoint(int X, int Y);
 /// Step px at a time. Ur Task dwells DwellMs at every point but the last, samples Guard every few
 /// points while held, and lets go only on Path[0]. Answered with a RunMacroResponse and followed
 /// with GetPlayback like a macro.
+/// <para>FreePath (Ur Task 0.12.0, additive): true lets the points sit anywhere inside the client,
+/// off the Step lattice, for the ore sweep; Step is then sent as 0. Null, the stone sweep, is left
+/// off the wire. An Ur Task without it ignores the field and refuses step 0.</para>
 /// </summary>
 public sealed record SweepPathRequest(string ContractVersion, string Method, string CallerPluginId, string Target,
-    ClearAtClient Client, IReadOnlyList<SweepPoint> Path, int Step, int DwellMs, ClearAtGuard Guard);
+    ClearAtClient Client, IReadOnlyList<SweepPoint> Path, int Step, int DwellMs, ClearAtGuard Guard,
+    bool? FreePath = null);
 
 /// <summary>Reason codes on the bridge, Ur Task's and Ur OCR's own synthetic ones.</summary>
 public static class BridgeReasons
@@ -125,6 +129,6 @@ public static class BridgeContract
         => new(ContractVersion, MethodClearAt, CallerId, target, client, points, outline, maxMsPerPoint, guard);
 
     public static SweepPathRequest ForSweepPath(string target, ClearAtClient client, IReadOnlyList<SweepPoint> path,
-        int step, int dwellMs, ClearAtGuard guard)
-        => new(ContractVersion, MethodSweepPath, CallerId, target, client, path, step, dwellMs, guard);
+        int step, int dwellMs, ClearAtGuard guard, bool freePath = false)
+        => new(ContractVersion, MethodSweepPath, CallerId, target, client, path, step, dwellMs, guard, freePath ? true : null);
 }

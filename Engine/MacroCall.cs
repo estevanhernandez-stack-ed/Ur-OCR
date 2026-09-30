@@ -20,7 +20,10 @@ public enum CallStatus
 
 /// <param name="NoOutline">A finished ClearAt's 1-based points that showed no outline, as Ur Task
 /// sent them; null for anything else, or from an Ur Task too old to send them.</param>
-public sealed record CallResult(CallStatus Status, string Label, string? Detail = null, IReadOnlyList<int>? NoOutline = null);
+/// <param name="Reason">On a Stop from a start Ur Task refused, its reason code (refused, unknown-macro,
+/// ...); null otherwise. The pulse falls back from a refused ore sweep on it.</param>
+public sealed record CallResult(CallStatus Status, string Label, string? Detail = null, IReadOnlyList<int>? NoOutline = null,
+    string? Reason = null);
 
 /// <summary>
 /// Runs one Ur Task macro (or one ClearAt call) for one account and follows it to its end, one tick at a time.
@@ -70,10 +73,12 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
     public static string ClearAtLabel(int points) => $"ClearAt ({points} {(points == 1 ? "point" : "points")})";
 
     /// <summary>One SweepPath for this account, followed through GetPlayback like a macro. The request
-    /// is built once, so a busy retry or an interrupted rerun sends the same path.</summary>
-    public void BeginSweep(ClearAtClient size, IReadOnlyList<SweepPoint> path, int step, int dwellMs, ClearAtGuard guard)
+    /// is built once, so a busy retry or an interrupted rerun sends the same path. freePath: the ore
+    /// sweep, off the block lattice, sent with step 0.</summary>
+    public void BeginSweep(ClearAtClient size, IReadOnlyList<SweepPoint> path, int step, int dwellMs, ClearAtGuard guard,
+        bool freePath = false)
     {
-        var request = BridgeContract.ForSweepPath(target, size, path, step, dwellMs, guard);
+        var request = BridgeContract.ForSweepPath(target, size, path, step, dwellMs, guard, freePath);
         Arm(SweepLabel(path.Count), ct => client.SweepPathAsync(request, ct));
     }
 
@@ -135,7 +140,7 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
             default:
                 return End(CallStatus.Stop, resp.Ok
                     ? $"Ur Task accepted '{_label}' but gave no playback id."
-                    : $"Ur Task refused '{_label}': {resp.Reason}. {resp.Detail}".TrimEnd());
+                    : $"Ur Task refused '{_label}': {resp.Reason}. {resp.Detail}".TrimEnd(), reason: resp.Ok ? null : resp.Reason);
         }
     }
 
@@ -198,11 +203,11 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
 
     private CallResult Waiting => new(CallStatus.Waiting, _label);
 
-    private CallResult End(CallStatus status, string? detail, IReadOnlyList<int>? noOutline = null)
+    private CallResult End(CallStatus status, string? detail, IReadOnlyList<int>? noOutline = null, string? reason = null)
     {
         var label = _label;
         _start = null;
         _playbackId = null;
-        return new CallResult(status, label, detail, noOutline);
+        return new CallResult(status, label, detail, noOutline, reason);
     }
 }
