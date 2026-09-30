@@ -17,10 +17,12 @@ public sealed record OreSweep(IReadOnlyList<SweepPoint> Path, IReadOnlyList<int>
 /// j growing down the screen. The spiral goes right 1, up 1, left 2, down 2, right 3, ... so ring k
 /// starts at (k, k - 1), ends at (k, k), and the next ring starts one block right, outward.
 /// <para>A cell is swept when it is not the centre, its point lies <see cref="EdgeMarginPx"/> inside
-/// the client, and it is not in the HUD; the path jumps over the rest with the button held. With
-/// nearSide, rows continue below ring 4 (the camera side) across the ring's width, back and forth,
-/// down to the last row inside the bottom margin; the other three sides stay at ring 4 (owner input
-/// 6). When skipped cells leave a straight move that would pass through the centre block, one detour
+/// the client, and it passes the HUD rule for its kind of point (HudMask): the start block, where the
+/// button goes down and comes back up, is off every button; every other point is held, so it may sit
+/// on a button (the hotbar, the icon column) but not on the Auto Mine button, whose dot is the guard.
+/// The path jumps over the rest with the button held. With nearSide, rows continue below ring 4 (the
+/// camera side) across the ring's width, back and forth, down to the last row inside the bottom
+/// margin, under the hotbar too; the other three sides stay at ring 4 (owner input 6). When skipped cells leave a straight move that would pass through the centre block, one detour
 /// cell goes in first (the shortest that clears it both ways), or the point is dropped. At most
 /// <see cref="MaxPoints"/>, the closing return to the start block included. Every point is in the
 /// measured client's pixels, like the finder's. Pure.</para>
@@ -36,15 +38,19 @@ public static class SweepPath
     /// <summary>The start block, one other block, and the start block again.</summary>
     public const int MinPoints = 3;
 
-    /// <summary>A pass's path: its block size and centre, the finder's client, the game's HUD skipped.</summary>
+    /// <summary>A pass's path: its block size and centre, the finder's client, the game's HUD skipped
+    /// (HudMask.Contains where the button goes down and up, HudMask.ContainsHeld everywhere else).</summary>
     public static IReadOnlyList<SweepPoint> Build(FinderSetup pass, bool nearSide) =>
         Build(pass.CenterX, pass.CenterY, pass.Pitch, pass.ClientW, pass.ClientH, nearSide,
-            (x, y) => HudMask.Contains(x, y, pass.ClientW, pass.ClientH));
+            (x, y) => HudMask.Contains(x, y, pass.ClientW, pass.ClientH),
+            (x, y) => HudMask.ContainsHeld(x, y, pass.ClientW, pass.ClientH));
 
     /// <summary>The path, or empty when the start block is outside the game area or fewer than
-    /// <see cref="MinPoints"/> points fit.</summary>
+    /// <see cref="MinPoints"/> points fit. <paramref name="pressMasked"/> rules the start block (the
+    /// first and last point, where the button goes down and up); <paramref name="heldMasked"/> every
+    /// other point.</summary>
     public static IReadOnlyList<SweepPoint> Build(int centerX, int centerY, int pitch, int clientW, int clientH,
-        bool nearSide, Func<int, int, bool> masked)
+        bool nearSide, Func<int, int, bool> pressMasked, Func<int, int, bool> heldMasked)
     {
         if (pitch < 1) return Array.Empty<SweepPoint>();
         (int X, int Y) At((int I, int J) c) => (centerX + c.I * pitch, centerY + c.J * pitch);
@@ -53,11 +59,12 @@ public static class SweepPath
             if (c == (0, 0)) return false;
             var (x, y) = At(c);
             return x >= EdgeMarginPx && y >= EdgeMarginPx && x <= clientW - 1 - EdgeMarginPx && y <= clientH - 1 - EdgeMarginPx
-                   && !masked(x, y);
+                   && !heldMasked(x, y);
         }
 
         (int I, int J) start = (1, 0);
-        if (!Valid(start)) return Array.Empty<SweepPoint>();
+        var home = At(start);
+        if (!Valid(start) || pressMasked(home.X, home.Y)) return Array.Empty<SweepPoint>();
 
         var order = Spiral(Rings);
         if (nearSide) order.AddRange(NearSideRows(Rings, (clientH - 1 - EdgeMarginPx - centerY) / pitch));
@@ -102,23 +109,27 @@ public static class SweepPath
     /// <summary>
     /// The ore sweep (live 2026-09-30: 24 ore points through ClearAt took 35 s, most breaking in one
     /// 0.3 s hold): the ore points as one held drag, a free path Ur Task takes off the block lattice.
-    /// It starts on the ore point nearest <paramref name="startBlock"/> (the stone sweep's start),
-    /// goes to the nearest point not yet visited each time, and closes on its first point, where the
-    /// button comes up. A point on the centre block (within half a block both ways) is never swept. A
-    /// straight move that would pass through the centre block goes round it by the shortest ring-1
-    /// block that clears it both ways (inside the client's margin, off the HUD); with none, the point
-    /// is dropped, or on the way home the last point is dropped until the move home clears it. Fewer
-    /// than 2 ore points on the path: no path. Every point stays in the measured client's pixels. Pure.
+    /// It starts on the ore point nearest <paramref name="startBlock"/> (the stone sweep's start) that
+    /// is off <paramref name="pressMasked"/>, since the button goes down and comes back up there; goes
+    /// to the nearest point not yet visited each time; and closes on its first point. Every other point
+    /// is held, so ore on a button (the hotbar, the icon column) is swept, but not ore that is
+    /// <paramref name="heldMasked"/> (the Auto Mine button, whose dot is the guard). A point on the
+    /// centre block (within half a block both ways) is never swept. A straight move that would pass
+    /// through the centre block goes round it by the shortest ring-1 block that clears it both ways
+    /// (inside the client's margin, off <paramref name="heldMasked"/>); with none, the point is
+    /// dropped, or on the way home the last point is dropped until the move home clears it. Fewer than
+    /// 2 ore points on the path, or none that can start it: no path. Every point stays in the measured
+    /// client's pixels. Pure.
     /// </summary>
     public static OreSweep Ore(IReadOnlyList<(int X, int Y)> ore, SweepPoint startBlock, int centerX, int centerY,
-        int pitch, int clientW, int clientH, Func<int, int, bool> masked)
+        int pitch, int clientW, int clientH, Func<int, int, bool> pressMasked, Func<int, int, bool> heldMasked)
     {
         if (pitch < 1 || ore.Count < 2) return OreSweep.None;
         (double I, double J) Block((int X, int Y) p) => ((p.X - centerX) / (double)pitch, (p.Y - centerY) / (double)pitch);
         bool OnCentre((int X, int Y) p) { var (i, j) = Block(p); return Math.Abs(i) <= 0.5 && Math.Abs(j) <= 0.5; }
         double Px((int X, int Y) a, (int X, int Y) b) => Math.Sqrt((double)(a.X - b.X) * (a.X - b.X) + (double)(a.Y - b.Y) * (a.Y - b.Y));
 
-        // Ring-1 blocks a detour may use: inside the margin and off the game's buttons.
+        // Ring-1 blocks a detour may use: inside the margin and off the Auto Mine button (a detour is held).
         var ring1 = new List<(int X, int Y)>();
         for (var j = -1; j <= 1; j++)
             for (var i = -1; i <= 1; i++)
@@ -126,16 +137,20 @@ public static class SweepPath
                 if (i == 0 && j == 0) continue;
                 var (x, y) = (centerX + i * pitch, centerY + j * pitch);
                 if (x >= EdgeMarginPx && y >= EdgeMarginPx && x <= clientW - 1 - EdgeMarginPx && y <= clientH - 1 - EdgeMarginPx
-                    && !masked(x, y))
+                    && !heldMasked(x, y))
                     ring1.Add((x, y));
             }
 
-        // Nearest neighbour from the ore point nearest the start block.
-        var left = Enumerable.Range(0, ore.Count).Where(k => !OnCentre(ore[k])).ToList();
+        // Nearest neighbour from the pressable ore point nearest the start block.
+        var left = Enumerable.Range(0, ore.Count).Where(k => !OnCentre(ore[k]) && !heldMasked(ore[k].X, ore[k].Y)).ToList();
         if (left.Count < 2) return OreSweep.None;
         var start = (startBlock.X, startBlock.Y);
-        var order = new List<int>();
-        var at = start;
+        var pressable = left.Where(k => !pressMasked(ore[k].X, ore[k].Y)).ToList();
+        if (pressable.Count == 0) return OreSweep.None;
+        var first = pressable.MinBy(k => Px(start, ore[k]));
+        left.Remove(first);
+        var order = new List<int> { first };
+        var at = ore[first];
         while (left.Count > 0)
         {
             var next = left.MinBy(k => Px(at, ore[k]));
@@ -178,8 +193,8 @@ public static class SweepPath
             if (path.Count > MaxPoints - 4) break;     // room for a detour here and one on the way home
             Append(ore[k], k);                          // false: dropped, it goes to ClearAt
         }
-        var first = path[0].P;
-        while (path.Count > 1 && !Append(first, order[0])) path.RemoveAt(path.Count - 1);
+        var home = path[0].P;
+        while (path.Count > 1 && !Append(home, order[0])) path.RemoveAt(path.Count - 1);
 
         var swept = path.Take(path.Count - 1).Where(s => s.Ore >= 0).Select(s => s.Ore).Distinct().ToList();
         if (path.Count < MinPoints || swept.Count < 2) return OreSweep.None;

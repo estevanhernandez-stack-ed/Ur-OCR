@@ -123,7 +123,8 @@ public class TargetFinderTests
             for (var px = 0; px < 13; px++)
                 paint.Add((px * 30, py * 30, 20, 10, Cyan));        // 130 two-sample patches, 108 of them placeable
 
-        var targets = TargetFinder.Find(Frame(400, 300, paint.ToArray()), Setup(radius: 5));   // reach 240 px
+        var targets = TargetFinder.Find(Frame(400, 300, paint.ToArray()), Setup(radius: 5))   // reach 240 px
+            .Where(t => !t.InHud).ToList();                        // a 400x300 client scales the icon column over x < 80
 
         Assert.Equal(TargetFinder.MaxPoints, targets.Count);
         Assert.All(targets, t => Assert.True(t.Ore));
@@ -209,9 +210,12 @@ public class TargetFinderTests
     {
         var cyanFrame = new FramePixels(800, 600, Frames.Solid(800, 600, Cyan));
 
-        var targets = TargetFinder.Find(cyanFrame, Setup(w: 800, h: 600, cx: 400, cy: 300, radius: 5));
+        var all = TargetFinder.Find(cyanFrame, Setup(w: 800, h: 600, cx: 400, cy: 300, radius: 5));
+        var targets = all.Where(t => !t.InHud).ToList();
 
         Assert.Equal(TargetFinder.MaxPoints, targets.Count);
+        Assert.Equal(targets, all.Take(TargetFinder.MaxPoints));   // the pressable points come first
+        Assert.InRange(all.Count - targets.Count, 1, TargetFinder.MaxPoints);
         Assert.All(targets, t => Assert.True(t.Ore));
         var d2 = targets.Select(t => (t.X - 400) * (t.X - 400) + (t.Y - 300) * (t.Y - 300)).ToList();
         Assert.Equal(d2.OrderBy(d => d), d2);
@@ -228,9 +232,11 @@ public class TargetFinderTests
     }
 
     // Bug (2026-09-28): a ClearAt point landed on the inventory button in the bottom bar and opened
-    // the menu. TargetFinder now drops every point (ore and stone) on one of the game's buttons
-    // (HudMask.Boxes, 2026-09-30): the Roblox menu, Go to Top, the left icon column (x < 160), the
-    // hotbar (y 470 and below, x 160 to 725) and the update timer, in the measured 800x599 client.
+    // the menu. TargetFinder drops every stone point on one of the game's buttons (HudMask.Boxes,
+    // 2026-09-30): the Roblox menu, Go to Top, the left icon column (x < 160), the hotbar (y 470 and
+    // below, x 160 to 725) and the update timer, in the measured 800x599 client. Ore on a button comes
+    // back flagged InHud, for the ore sweep's held drag only (a held pointer fires no button, owner
+    // 2026-09-30); ore on the Auto Mine button, the guard, is dropped.
 
     private static FinderSetup HudSetup(int pitch, int radius, IReadOnlyList<OreColour>? ore = null) =>
         new("stone", 800, 599, Pitch: pitch, CenterX: 400, CenterY: 310, RadiusBlocks: radius,
@@ -261,15 +267,36 @@ public class TargetFinderTests
     }
 
     [Fact]
-    public void Ore_inside_the_hud_gives_no_points()
+    public void Ore_on_the_hotbar_comes_back_flagged_held_only()
     {
-        // A cyan HUD icon in the bottom bar (y 480..520), within reach of the character at (400, 310).
+        // Cyan in the bottom bar (y 480..520), within reach of the character at (400, 310): one point,
+        // the patch's centre (the grid point at y 510 is within half a block of it), flagged InHud.
         var ore = new[] { new OreColour("cyan crystal", Cyan) };
         var targets = TargetFinder.Find(
             Frame(800, 599, (380, 480, 40, 40, Cyan)),
             HudSetup(pitch: 40, radius: 5, ore: ore));
 
-        Assert.DoesNotContain(targets, t => t.Ore);
+        var held = Assert.Single(targets, t => t.Ore);
+        Assert.Equal(new FinderTarget(400, 500, true, "ore on a button 1", InHud: true), held);
+        Assert.Same(held, targets[^1]);                             // after every point that can be pressed
+        Assert.DoesNotContain(targets, t => !t.InHud && HudMask.Contains(t.X, t.Y, 800, 599));
+    }
+
+    [Fact]
+    public void Ore_on_the_Auto_Mine_button_is_dropped_ore_elsewhere_in_the_icon_column_is_held_only()
+    {
+        // 80 px blocks, reach 480 px. A patch at (50, 310) sits on the Auto Mine button: not even a held
+        // pointer goes there, since its dot is the guard. A patch at (120, 160) sits on the icon column
+        // above it: held only.
+        var ore = new[] { new OreColour("cyan crystal", Cyan) };
+        var targets = TargetFinder.Find(
+            Frame(800, 599, (30, 290, 40, 40, Cyan), (100, 150, 40, 40, Cyan)),
+            HudSetup(pitch: 80, radius: 5, ore: ore));
+
+        var held = Assert.Single(targets, t => t.Ore);
+        Assert.True(held.InHud);
+        Assert.Equal((120, 160), At(held));
+        Assert.DoesNotContain(targets, t => HudMask.ContainsHeld(t.X, t.Y, 800, 599));
     }
 
     [Fact]

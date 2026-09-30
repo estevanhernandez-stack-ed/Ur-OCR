@@ -14,7 +14,7 @@ public class OreSweepPathTests
     /// <summary>Open ground: a 2000x2000 client, the character at 1000,1000, 50 px blocks, the stone
     /// sweep starting one block east.</summary>
     private static OreSweep Open(IReadOnlyList<(int X, int Y)> ore, Func<int, int, bool>? masked = null) =>
-        SweepPath.Ore(ore, new SweepPoint(1050, 1000), 1000, 1000, 50, 2000, 2000, masked ?? NoHud);
+        SweepPath.Ore(ore, new SweepPoint(1050, 1000), 1000, 1000, 50, 2000, 2000, NoHud, masked ?? NoHud);
 
     private static (double I, double J) Block(SweepPoint p) => ((p.X - 1000) / 50.0, (p.Y - 1000) / 50.0);
 
@@ -115,6 +115,74 @@ public class OreSweepPathTests
         Assert.Empty(s.Swept);
     }
 
+    // The owner's rule (by hand, 2026-09-30): a button fires on a press or a release over it, never on
+    // a held pointer dragged over it. So the drag's first point, where the button goes down and comes
+    // back up, must be off every button; every other point may be on one, except the Auto Mine button.
+
+    [Fact]
+    public void Ore_on_a_button_is_swept_held_but_never_starts_the_drag()
+    {
+        // The ore nearest the start block, (1100, 1060), is on a "button" (y 1050 and down): the drag
+        // starts on the next pressable ore instead and takes the button ore held.
+        bool Button(int x, int y) => y >= 1050;
+
+        var s = SweepPath.Ore(new[] { (1100, 1060), (1200, 1000) }, new SweepPoint(1050, 1000), 1000, 1000, 50, 2000, 2000,
+            Button, NoHud);
+
+        Assert.Equal(new[] { new SweepPoint(1200, 1000), new SweepPoint(1100, 1060), new SweepPoint(1200, 1000) }, s.Path);
+        Assert.Equal(new[] { 0, 1 }, s.Swept.OrderBy(x => x));
+    }
+
+    [Fact]
+    public void Ore_where_no_held_point_may_go_is_never_swept()
+    {
+        bool AutoMine(int x, int y) => x <= 900;
+
+        var s = SweepPath.Ore(new[] { (1100, 1000), (1100, 1100), (880, 1000) }, new SweepPoint(1050, 1000), 1000, 1000, 50,
+            2000, 2000, NoHud, AutoMine);
+
+        Assert.DoesNotContain(new SweepPoint(880, 1000), s.Path);
+        Assert.Equal(new[] { 0, 1 }, s.Swept.OrderBy(x => x));
+        Assert.DoesNotContain(s.Path, p => AutoMine(p.X, p.Y));
+    }
+
+    [Fact]
+    public void Ore_all_on_buttons_has_nowhere_to_press_and_makes_no_path()
+    {
+        var s = SweepPath.Ore(new[] { (1100, 1000), (1100, 1100) }, new SweepPoint(1050, 1000), 1000, 1000, 50, 2000, 2000,
+            (_, _) => true, NoHud);
+
+        Assert.Empty(s.Path);
+        Assert.Empty(s.Swept);
+    }
+
+    [Fact]
+    public void Ore_on_the_real_hotbar_and_icon_column_is_swept_held_off_the_Auto_Mine_button()
+    {
+        // 16 ore points round the default centre at 80 px blocks, half of them on the game's buttons
+        // (the hotbar and the icon column), none on the Auto Mine button, as the finder hands them over.
+        var rng = new Random(11);
+        var ore = new List<(int X, int Y)>();
+        while (ore.Count < 16)
+        {
+            var (x, y) = (rng.Next(20, 780), rng.Next(90, 580));
+            if (Math.Abs(x - 400) <= 40 && Math.Abs(y - 310) <= 40) continue;
+            if (HudMask.ContainsHeld(x, y, 800, 599)) continue;
+            if (HudMask.Contains(x, y, 800, 599) != (ore.Count % 2 == 0)) continue;
+            ore.Add((x, y));
+        }
+
+        var s = SweepPath.Ore(ore, new SweepPoint(480, 310), 400, 310, 80, 800, 599,
+            (x, y) => HudMask.Contains(x, y, 800, 599),
+            (x, y) => HudMask.ContainsHeld(x, y, 800, 599));
+
+        Assert.Null(UrTaskFreePathRefusal(s.Path, 800, 599));
+        Assert.False(HudMask.Contains(s.Path[0].X, s.Path[0].Y, 800, 599), $"the drag presses on {s.Path[0]}, a button");
+        Assert.DoesNotContain(s.Path, p => HudMask.ContainsHeld(p.X, p.Y, 800, 599));
+        Assert.Contains(s.Swept, i => HudMask.Contains(ore[i].X, ore[i].Y, 800, 599));
+        Assert.True(s.Swept.Count >= 12, $"swept {s.Swept.Count} of 16");
+    }
+
     [Fact]
     public void Ore_all_round_the_character_makes_a_path_Ur_Task_takes()
     {
@@ -129,7 +197,8 @@ public class OreSweepPathTests
             ore.Add((x, y));
         }
 
-        var s = SweepPath.Ore(ore, new SweepPoint(480, 310), 400, 310, 80, 800, 599, (x, y) => HudMask.Contains(x, y, 800, 599));
+        var s = SweepPath.Ore(ore, new SweepPoint(480, 310), 400, 310, 80, 800, 599, (x, y) => HudMask.Contains(x, y, 800, 599),
+            (x, y) => HudMask.ContainsHeld(x, y, 800, 599));
 
         Assert.Null(UrTaskFreePathRefusal(s.Path, 800, 599));
         Assert.True(s.Swept.Count >= 20, $"swept {s.Swept.Count} of 24");

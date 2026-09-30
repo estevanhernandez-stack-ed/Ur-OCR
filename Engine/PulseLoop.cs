@@ -334,7 +334,7 @@ public sealed class PulseLoop
 
         var targets = TargetFinder.Find(frame, pass);
         if (_pitchUnread) targets = NearestStone(targets, UnreadStonePoints);
-        var found = targets.Count;
+        var found = targets.Count(t => !t.InHud);
         targets = LeaveOutNoOutline(targets, pass.Pitch);
         _sweep = SweepFor(pass);
         _oreSweep = null;
@@ -347,7 +347,7 @@ public sealed class PulseLoop
             _sweepFrame = frame;
             targets = PlanOreSweep(targets, pass);          // the ore it sweeps leaves the ClearAt list
         }
-        else if (targets.Count == 0 && found > 0)
+        else if ((targets = Pressable(targets)).Count == 0 && found > 0)
             return NothingInReach($"nothing in reach to clear (all {found} points showed no outline on a recent pass)");
         else if (targets.Count == 0)
         {
@@ -455,7 +455,9 @@ public sealed class PulseLoop
     /// returns what goes to ClearAt. Survivors (the survivor rule at _sweptOre) go to ClearAt, which
     /// holds until the ore breaks. The rest are swept when 2 or more of them make a path; a point the
     /// path could not take (on the centre block, or no way round it) goes to ClearAt, and with fewer
-    /// than 2 there is no ore sweep and they all go to ClearAt as before.
+    /// than 2 there is no ore sweep and they all go to ClearAt as before. Ore on a button (InHud) is
+    /// swept like the rest, as a held point (never the one the drag starts and ends on), but never
+    /// goes to ClearAt, which presses: left off the sweep, or surviving it, it is let go this pass.
     /// </summary>
     private IReadOnlyList<FinderTarget> PlanOreSweep(IReadOnlyList<FinderTarget> ore, FinderSetup pass)
     {
@@ -463,19 +465,25 @@ public sealed class PulseLoop
         var survivors = ore.Where(t => _sweptOre.Any(s => Near(s, t, reach))).ToList();
         _sweptOre.Clear();
         var fresh = ore.Where(t => !survivors.Contains(t)).ToList();
-        _survivors = survivors.Count;
-        if (fresh.Count < 2) return ore;
+        _survivors = survivors.Count(t => !t.InHud);
+        if (fresh.Count < 2) return Pressable(ore);
 
         var plan = SweepPath.Ore(fresh.Select(t => (t.X, t.Y)).ToList(), _sweep![0], pass.CenterX, pass.CenterY, _sweepStep,
-            pass.ClientW, pass.ClientH, (x, y) => HudMask.Contains(x, y, pass.ClientW, pass.ClientH));
-        if (plan.Path.Count == 0) return ore;
+            pass.ClientW, pass.ClientH,
+            (x, y) => HudMask.Contains(x, y, pass.ClientW, pass.ClientH),
+            (x, y) => HudMask.ContainsHeld(x, y, pass.ClientW, pass.ClientH));
+        if (plan.Path.Count == 0) return Pressable(ore);
 
         var swept = plan.Swept.Select(i => fresh[i]).ToList();
-        _oreAll = ore;
+        _oreAll = Pressable(ore);
         _oreSweep = plan.Path;
         _oreSweepTargets = swept;
-        return survivors.Concat(fresh.Where(t => !swept.Contains(t))).ToList();
+        return Pressable(survivors.Concat(fresh.Where(t => !swept.Contains(t))).ToList());
     }
+
+    /// <summary>The points ClearAt may take: it presses on each, so none on a button (InHud).</summary>
+    private static IReadOnlyList<FinderTarget> Pressable(IReadOnlyList<FinderTarget> targets) =>
+        targets.Any(t => t.InHud) ? targets.Where(t => !t.InHud).ToList() : targets;
 
     private static bool Near((int X, int Y) s, FinderTarget t, double reach)
     {

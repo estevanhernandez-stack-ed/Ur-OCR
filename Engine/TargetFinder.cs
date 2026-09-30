@@ -3,8 +3,10 @@ using RoRoRo.UrOcr.Storage;
 
 namespace RoRoRo.UrOcr.Engine;
 
-/// <summary>One ClearAt point in measured-client pixels. Ore marks a point on an ore patch.</summary>
-public sealed record FinderTarget(int X, int Y, bool Ore, string Label);
+/// <summary>One point in measured-client pixels. Ore marks a point on an ore patch. InHud marks ore on
+/// one of the game's buttons (HudMask.Contains): a held drag may pass over it (the ore sweep), a press
+/// may not, so whatever presses (ClearAt) leaves it out.</summary>
+public sealed record FinderTarget(int X, int Y, bool Ore, string Label, bool InHud = false);
 
 /// <summary>
 /// Where to clear on a calm frame (spec "Reach, measured, and the ore finder"). Ore first: samples
@@ -17,10 +19,15 @@ public sealed record FinderTarget(int X, int Y, bool Ore, string Label);
 /// closer than half a block the one nearer the character stays. Then stone: a grid every Pitch out
 /// to RadiusBlocks blocks around the character, less the points inside an ore patch; the centre
 /// point always stays. Points whose outline box would leave the client, or that lie less than
-/// EdgeMarginPx inside it, are dropped, as is any point (ore or stone) on one of the game's buttons
+/// EdgeMarginPx inside it, are dropped, as is any stone point on one of the game's buttons
 /// (HudMask.Boxes, shared with SweepPath): the Roblox menu, Go to Top, the left icon column, the
 /// hotbar and the update timer. The rest of the top strip and the ground right of the hotbar are
-/// game. Ore nearest first, then stone nearest first, at most MaxPoints. Every
+/// game. Ore nearest first, then stone nearest first, at most MaxPoints: every one of these can be
+/// pressed. After them come the ore points on a button, flagged InHud, nearest first, at most
+/// MaxPoints more: a held drag may pass over a button without firing it (owner, 2026-09-30), so the
+/// ore sweep takes them, and ClearAt, which presses on each point, must leave them out. Ore on the
+/// Auto Mine button (HudMask.ContainsHeld) is dropped outright, since not even a held pointer may go
+/// there, and an InHud point within half a block of a pressable one is dropped too. Every
 /// coordinate is in the finder's measured client pixels; the frame may be another size and is sampled
 /// scaled.
 /// </summary>
@@ -93,15 +100,19 @@ public static class TargetFinder
             }
 
         var halfBlock2 = (long)f.Pitch * f.Pitch / 4;
+        var offCentre = ore.Where(p => Dist2(p, f.CenterX, f.CenterY) > halfBlock2).ToList();
         var kept = new List<(int X, int Y)>();
-        foreach (var p in Nearest(ore.Where(p => Clickable(p.X, p.Y, f)
-                                                  && Dist2(p, f.CenterX, f.CenterY) > halfBlock2), f))
+        foreach (var p in Nearest(offCentre.Where(p => Clickable(p.X, p.Y, f)), f))
             if (kept.All(k => Dist2(p, k.X, k.Y) >= halfBlock2)) kept.Add(p);
+        var held = new List<(int X, int Y)>();
+        foreach (var p in Nearest(offCentre.Where(p => HeldOnly(p.X, p.Y, f)), f))
+            if (kept.Concat(held).All(k => Dist2(p, k.X, k.Y) >= halfBlock2)) held.Add(p);
 
         return kept
             .Select((p, n) => new FinderTarget(p.X, p.Y, true, $"ore {n + 1}"))
             .Concat(Nearest(stone, f).Select((p, n) => new FinderTarget(p.X, p.Y, false, $"stone {n + 1}")))
             .Take(MaxPoints)
+            .Concat(held.Take(MaxPoints).Select((p, n) => new FinderTarget(p.X, p.Y, true, $"ore on a button {n + 1}", InHud: true)))
             .ToList();
     }
 
@@ -130,6 +141,13 @@ public static class TargetFinder
         f.BoxFits(x, y)
         && x >= EdgeMarginPx && y >= EdgeMarginPx && x <= f.ClientW - 1 - EdgeMarginPx && y <= f.ClientH - 1 - EdgeMarginPx
         && !HudMask.Contains(x, y, f.ClientW, f.ClientH);
+
+    /// <summary>EdgeMarginPx inside the client and on a button, but not the Auto Mine button: a held
+    /// drag may pass over it, a press may not.</summary>
+    private static bool HeldOnly(int x, int y, FinderSetup f) =>
+        x >= EdgeMarginPx && y >= EdgeMarginPx && x <= f.ClientW - 1 - EdgeMarginPx && y <= f.ClientH - 1 - EdgeMarginPx
+        && HudMask.Contains(x, y, f.ClientW, f.ClientH)
+        && !HudMask.ContainsHeld(x, y, f.ClientW, f.ClientH);
 
     private static int CeilDiv(int a, int b) => (int)Math.Ceiling((double)a / b);
 

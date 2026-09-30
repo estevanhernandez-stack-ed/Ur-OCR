@@ -50,6 +50,40 @@ public class HudMaskTests
         Assert.True(HudMask.Contains(1599, 1197, 1600, 1198));   // the last pixel, under the timer
     }
 
+    // A held pointer fires no button (owner, by hand, 2026-09-30), so a held point may sit on any of
+    // them but the Auto Mine button: Ur Task samples its dot, the guard at (55, 289), during the hold,
+    // and a hovered button may change colour. Measured on a live frame: the icon with its outline is
+    // x 17 to 65, y 281 to 331; the box adds 8 px or more, x 2 to 82, y 267 to 342.
+
+    [Theory]
+    [InlineData(55, 289)]     // the guard dot
+    [InlineData(17, 281)]     // the icon's top left
+    [InlineData(65, 331)]     // its bottom right
+    [InlineData(2, 267)]      // the box's first pixel
+    [InlineData(82, 342)]     // its last
+    public void The_Auto_Mine_button_is_off_limits_to_a_held_point(int x, int y)
+    {
+        Assert.True(HudMask.ContainsHeld(x, y, 800, 599));
+        Assert.True(Hud(x, y));                                   // and to a press, as part of the icon column
+    }
+
+    [Theory]
+    [InlineData(83, 300)]     // just right of it, still the icon column
+    [InlineData(40, 266)]     // just above it
+    [InlineData(40, 343)]     // just below it
+    [InlineData(400, 520)]    // a hotbar slot
+    [InlineData(400, 40)]     // Go to Top
+    [InlineData(760, 570)]    // the update timer
+    [InlineData(600, 300)]    // game
+    public void Everything_else_takes_a_held_point(int x, int y) => Assert.False(HudMask.ContainsHeld(x, y, 800, 599));
+
+    [Fact]
+    public void The_Auto_Mine_box_scales_with_the_frame()
+    {
+        Assert.True(HudMask.ContainsHeld(110, 578, 1600, 1198));    // the guard dot, doubled
+        Assert.False(HudMask.ContainsHeld(166, 600, 1600, 1198));   // (83, 300), doubled
+    }
+
     [Fact]
     public void The_pitch_read_keeps_the_conservative_bands()
     {
