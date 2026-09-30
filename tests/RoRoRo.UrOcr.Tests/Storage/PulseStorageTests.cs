@@ -93,6 +93,22 @@ public class PulseStorageTests
         Assert.Equal(5, p.RockCapMinutes);
         Assert.True(p.Enabled);
         Assert.Null(p.Macros);
+        Assert.Equal(400, p.SweepDwellMs);
+        Assert.True(p.SweepNearSide);
+    }
+
+    [Fact]
+    public void The_sweep_settings_survive_a_reload_under_camel_case_keys()
+    {
+        var path = TempFile();
+        new TriggerStore(path).UpsertPulse(Pulse() with { SweepDwellMs = 650, SweepNearSide = false });
+
+        var json = File.ReadAllText(path);
+        var p = Assert.Single(new TriggerStore(path).Pulses);
+
+        Assert.Contains("\"sweepDwellMs\": 650", json);
+        Assert.Contains("\"sweepNearSide\": false", json);
+        Assert.Equal((650, false), (p.SweepDwellMs, p.SweepNearSide));
     }
 
     [Fact]

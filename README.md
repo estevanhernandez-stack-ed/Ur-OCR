@@ -45,11 +45,12 @@ Set it up per account in a pulse file (one entry per account; your Roblox user i
       "pulses": [
         { "accountUserId": 123456789, "ringId": "mine8", "targetLayer": 3, "mode": "top" },
         { "accountUserId": 987654321, "ringId": "mine8", "targetLayer": 2, "mode": "oneAbove",
-          "burstMs": 2000, "settleMs": 1000, "rockCapMinutes": 5 }
+          "burstMs": 2000, "settleMs": 1000, "rockCapMinutes": 5,
+          "sweepDwellMs": 600, "sweepNearSide": true }
       ]
     }
 
-`targetLayer` counts the ring's layers from the top. `top` clears on that layer; `oneAbove` clears on the layer above it, for an account whose pickaxe struggles there. Left out, `burstMs` is 2000, `settleMs` 1000 and `rockCapMinutes` 5. Import the ring first, then the pulse, with Ur OCR closed and Ur Task's ore stop macros installed:
+`targetLayer` counts the ring's layers from the top. `top` clears on that layer; `oneAbove` clears on the layer above it, for an account whose pickaxe struggles there. Left out, `burstMs` is 2000, `settleMs` 1000, `rockCapMinutes` 5, `sweepDwellMs` 400 and `sweepNearSide` true. `sweepDwellMs` is how long the sweep holds on each block (50 to 5000): raise it for an account whose pickaxe breaks blocks slowly. `sweepNearSide` lets the sweep reach further toward the bottom of the window, where the blocks nearest the camera sit (see "Stone is swept"). Import the ring first, then the pulse, with Ur OCR closed and Ur Task's ore stop macros installed:
 
     RoRoRo.UrOcr.exe --import-ring mine8.measured.json
     RoRoRo.UrOcr.exe --import-pulse pulse.json

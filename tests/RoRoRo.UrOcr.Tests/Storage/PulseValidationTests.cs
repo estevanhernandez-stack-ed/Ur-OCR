@@ -70,6 +70,19 @@ public class PulseValidationTests
     public void Timings_must_be_in_range(int burst, int settle, int cap, string field) =>
         Assert.Contains(field, Check(Pulse() with { BurstMs = burst, SettleMs = settle, RockCapMinutes = cap }));
 
+    [Theory]
+    [InlineData(49)]
+    [InlineData(5001)]
+    public void The_sweep_dwell_must_be_in_range(int dwell) =>
+        Assert.Contains($"sweepDwellMs must be 50 to 5000, not {dwell}", Check(Pulse() with { SweepDwellMs = dwell }));
+
+    [Fact]
+    public void The_sweep_dwell_limits_are_valid()
+    {
+        Assert.Null(Check(Pulse() with { SweepDwellMs = 50 }));
+        Assert.Null(Check(Pulse() with { SweepDwellMs = 5000 }));
+    }
+
     [Fact]
     public void The_ring_needs_all_eight_spot_triggers() =>
         Assert.Contains("needs 8 spot triggers", Check(Pulse(), Spots(7)));

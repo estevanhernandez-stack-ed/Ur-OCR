@@ -17,8 +17,9 @@ public sealed record PulseMacros(string AutoMineOff, string AutoMineOn, string G
 
 /// <summary>
 /// One account's ore stop pulse (spec 2026-09-28, "Settings per account"). TargetLayer counts the
-/// ring's layers from the top, 1-based. Stored in triggers.json under "pulses"; missing keys load
-/// as the spec defaults.
+/// ring's layers from the top, 1-based. SweepDwellMs and SweepNearSide are the sweep's per-account
+/// settings (ore-stop sweep spec: dwell per account, default 400 ms; near-side rows, default on).
+/// Stored in triggers.json under "pulses"; missing keys load as the spec defaults.
 /// </summary>
 public sealed record PulseConfig(
     long AccountUserId,
@@ -29,8 +30,13 @@ public sealed record PulseConfig(
     int SettleMs = PulseConfig.DefaultSettleMs,
     int RockCapMinutes = PulseConfig.DefaultRockCapMinutes,
     bool Enabled = true,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PulseMacros? Macros = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PulseMacros? Macros = null,
+    int SweepDwellMs = PulseConfig.DefaultSweepDwellMs,
+    bool SweepNearSide = true)
 {
+    /// <summary>How long the sweep holds on each block (owner decision 2): the main breaks a
+    /// bottom-layer block in about 0.3 s; a weaker pickaxe needs longer.</summary>
+    public const int DefaultSweepDwellMs = 400;
     public const int DefaultBurstMs = 2000;
     public const int DefaultSettleMs = 1000;
     public const int DefaultRockCapMinutes = 5;
