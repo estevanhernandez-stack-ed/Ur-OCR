@@ -7,10 +7,14 @@ namespace RoRoRo.UrOcr.Engine;
 public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTop, Turning, Charging, Stopped }
 
 /// <summary>
-/// One account's ore stop pulse (spec 2026-09-28). Riding: Auto Mine on for BurstMs. Pausing: Auto
+/// One account's ore stop pulse (spec 2026-09-28). Riding: Auto Mine on for a ride (RideFor). Pausing: Auto
 /// Mine off, then SettleMs for the effects to clear. Reading: read the layer on that calm frame, by
 /// colour share around the character with an ore finder (LayerShare), else by the 8-spot vote.
-/// Above the aim layer: ride again. Past it: Go to Top.
+/// Above the aim layer: ride again. Past it: Go to Top. A ride's length depends on how far above the
+/// aim layer the pulse is known to be (live 2026-09-30: 8 stop-read cycles of a 2 s ride and 2.5 s of
+/// stopping and reading took 39 s to reach black): RideFirstMs from the top (the start and every Go to
+/// Top, no read yet), RideBurstFarMs after a read 2 or more layers above the aim layer, BurstMs after a
+/// read 1 layer above; every burst (no layer, dark, nothing in reach) starts from BurstMs.
 /// At it: Clearing. With an ore finder for the aim layer, one ClearAt call carries the finder's points
 /// (ore patches, then a block grid) from a calm frame; without one, one Clear spot per ring spot,
 /// ore first. With a guard in the finder and a block size read off the frame (or, without a read Ur
@@ -34,7 +38,8 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// read again right before each macro; a playback already started is still followed.
 /// A clear or macro whose check could not run (CheckFailed) or that Ur Task lost (Lost) stops the loop.
 /// Usables (PulseUsables), each at most once per its everyMs: the ride usable fires in a
-/// ride or burst, right after its Auto Mine on has finished (not while standing still), and only with
+/// ride or burst, right after its Auto Mine on has finished (not while standing still), and again
+/// every everyMs while the burst lasts (a 5 s ride with a 3 s Rover fires it twice), each time only with
 /// RideUsableRoomMs left in the burst, only while the pulse is sure it is above the aim layer: the last calm read named a
 /// layer above it (a read with no layer does not count), and no read has reached the aim layer or
 /// gone deeper since the last Go to Top (live 2026-09-30: a Rover fired on a no-layer read with black
@@ -126,7 +131,7 @@ public sealed class PulseLoop
     private int _survivors;                                    // this pass's ore sent to ClearAt by the survivor rule, for the log
     private bool _freePathRefusedLogged;                       // "Ur Task refused the ore sweep" is logged once
 
-    private bool _rideTried;                // the ride usable was tried this burst
+    private int _rideMs;                   // this Riding state's ride (RideFor), set before entering it
     private bool _macroDone;               // this state's macro has ended
     private DateTimeOffset? _until;        // this state's timer: set when its macro ends
     private readonly Queue<int> _queue = new();
@@ -158,6 +163,7 @@ public sealed class PulseLoop
         _finder = _ring is null ? null : PulseValidation.FinderFor(_ring, config.AimLayer);
         _toleranceRgb = _spots.Select(s => s.Color?.ToleranceRgb ?? 0).DefaultIfEmpty(0).Max();
         _call = new MacroCall(macros, config.AccountUserId.ToString(CultureInfo.InvariantCulture), clock, log);
+        _rideMs = config.RideFirstMs;      // the start is a ride from the top: no read yet
 
         if (PulseValidation.Validate(config, rings, triggers) is { } problem)
         {
@@ -174,6 +180,8 @@ public sealed class PulseLoop
                     + (config.SweepBlockPx is { } px ? $", {px} px blocks without a read)" : ")"));
         _log($"started: ring {config.RingId}, target layer {config.TargetLayer} ({mode}), clearing on {_ring!.Layers[config.AimLayer - 1].Name} with {how}"
              + UsablesLine(config.Usables));
+        if (config.RideFirstMs != config.BurstMs || config.RideBurstFarMs != config.BurstMs)
+            _log($"rides: {Seconds(config.RideFirstMs)} s from the top, {Seconds(config.RideBurstFarMs)} s from 2 or more layers above the aim, {Seconds(config.BurstMs)} s from 1 above and for a burst");
     }
 
     public long AccountUserId => _config.AccountUserId;
@@ -223,14 +231,12 @@ public sealed class PulseLoop
             case PulseState.Riding:
             case PulseState.Bursting:
                 if (!_macroDone) return Begin(M.AutoMineOn, PulseMacroNames.AutoMineOn);
-                // Auto Mine is on: drop the bomb now, not while standing still. Once per burst, and only
-                // with room before the burst ends, so Auto Mine off is never pushed past its time.
-                if (!_rideTried && _until is { } end && (end - now).TotalMilliseconds >= RideUsableRoomMs
+                // Auto Mine is on: drop the bomb now, not while standing still, and again each everyMs
+                // while the burst lasts (RideDue). Only with room before the burst ends, so Auto Mine off
+                // is never pushed past its time.
+                if (_until is { } end && (end - now).TotalMilliseconds >= RideUsableRoomMs
                     && RideDue(now) is { } ride)
-                {
-                    _rideTried = true;
                     return FireUsable("ride", ride, now);
-                }
                 return now >= _until && Enter(PulseState.Pausing);
 
             case PulseState.Pausing:
@@ -250,6 +256,8 @@ public sealed class PulseLoop
                 _readAbove = false;
                 _emptyPasses = 0;          // and so does the growing burst
                 _turns = 0;                // and the looking around
+                _rideMs = _config.RideFirstMs;   // no read yet, and the upper layers take a while
+                if (_rideMs != _config.BurstMs) _log($"at the top: riding {Seconds(_rideMs)} s before the first read");
                 return Enter(PulseState.Riding);
 
             case PulseState.Turning:
@@ -416,7 +424,9 @@ public sealed class PulseLoop
         }
         if (number < aim)
         {
-            _log($"{seen} is above the target ({aimName}): riding on");
+            _rideMs = RideFor(aim - number);
+            var length = _rideMs != _config.BurstMs ? $" for {Seconds(_rideMs)} s" : "";
+            _log($"{seen} is above the target ({aimName}): riding on{length}");
             return Enter(PulseState.Riding);
         }
         // The rock cap counts only while clearing (spec step 5), so the slow pulsed descent never trips it.
@@ -687,6 +697,10 @@ public sealed class PulseLoop
         return Enter(PulseState.Pausing, macroDone: true);
     }
 
+    /// <summary>The ride after a calm read <paramref name="above"/> layers above the aim layer:
+    /// RideBurstFarMs from 2 or more above, BurstMs from 1 above.</summary>
+    private int RideFor(int above) => above >= 2 ? _config.RideBurstFarMs : _config.BurstMs;
+
     /// <summary>A pass with nothing in reach usually means a jammed camera or faces turned away, not an
     /// empty area: turn the camera and read again, up to MaxTurns times, then ride a burst and start
     /// the turns over. Without a Camera turn left macro it rides the burst straight away.</summary>
@@ -881,14 +895,13 @@ public sealed class PulseLoop
         State = next;
         _burstMs = _config.BurstMs;       // a growing burst is set by RideLonger after this
         _macroDone = macroDone;
-        _rideTried = false;
         _until = macroDone ? TimerFor(next) : null;
         return true;
     }
 
     private DateTimeOffset? TimerFor(PulseState state) => state switch
     {
-        PulseState.Riding => _clock.Now.AddMilliseconds(_config.BurstMs),
+        PulseState.Riding => _clock.Now.AddMilliseconds(_rideMs),
         PulseState.Bursting => _clock.Now.AddMilliseconds(_burstMs),
         PulseState.Pausing => _clock.Now.AddMilliseconds(_config.SettleMs),
         PulseState.Turning => _clock.Now.AddMilliseconds(_config.SettleMs),

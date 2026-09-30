@@ -97,6 +97,22 @@ public class PulseStorageTests
         Assert.Equal(400, p.OreSweepDwellMs);
         Assert.True(p.SweepNearSide);
         Assert.Null(p.SweepBlockPx);
+        Assert.Equal(8000, p.RideFirstMs);
+        Assert.Equal(5000, p.RideBurstFarMs);
+    }
+
+    [Fact]
+    public void The_ride_lengths_survive_a_reload_under_camel_case_keys()
+    {
+        var path = TempFile();
+        new TriggerStore(path).UpsertPulse(Pulse() with { RideFirstMs = 9000, RideBurstFarMs = 4500 });
+
+        var json = File.ReadAllText(path);
+        var p = Assert.Single(new TriggerStore(path).Pulses);
+
+        Assert.Contains("\"rideFirstMs\": 9000", json);
+        Assert.Contains("\"rideBurstFarMs\": 4500", json);
+        Assert.Equal((9000, 4500), (p.RideFirstMs, p.RideBurstFarMs));
     }
 
     [Fact]

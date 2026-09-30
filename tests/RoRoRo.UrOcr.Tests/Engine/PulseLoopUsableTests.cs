@@ -103,8 +103,9 @@ public class PulseLoopUsableTests
     [Fact]
     public async Task The_ride_usable_is_skipped_when_the_burst_has_no_room_for_it()
     {
+        // Black is 1 above the aim, so the ride after it is BurstMs (a navy read would ride the far ride).
         var config = With(rideEvery: 5000) with { BurstMs = PulseLoop.RideUsableRoomMs - 100 };
-        var rig = Build(config, PulseFixtures.Navy);
+        var rig = Build(config, PulseFixtures.Black);
 
         await FirstRead(rig);
         await Tick(rig);

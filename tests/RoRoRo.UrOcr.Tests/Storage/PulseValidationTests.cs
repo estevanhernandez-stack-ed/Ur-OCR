@@ -98,6 +98,23 @@ public class PulseValidationTests
     }
 
     [Theory]
+    [InlineData(499)]
+    [InlineData(30001)]
+    [InlineData(0)]
+    public void The_ride_lengths_must_be_in_range(int ms)
+    {
+        Assert.Contains($"rideFirstMs must be 500 to 30000, not {ms}", Check(Pulse() with { RideFirstMs = ms }));
+        Assert.Contains($"rideBurstFarMs must be 500 to 30000, not {ms}", Check(Pulse() with { RideBurstFarMs = ms }));
+    }
+
+    [Fact]
+    public void The_ride_length_limits_are_valid()
+    {
+        Assert.Null(Check(Pulse() with { RideFirstMs = 500, RideBurstFarMs = 30000 }));
+        Assert.Null(Check(Pulse() with { RideFirstMs = 30000, RideBurstFarMs = 500 }));
+    }
+
+    [Theory]
     [InlineData(7)]
     [InlineData(241)]
     [InlineData(0)]

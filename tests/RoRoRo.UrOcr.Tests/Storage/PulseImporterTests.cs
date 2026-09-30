@@ -153,6 +153,22 @@ public class PulseImporterTests
     }
 
     [Fact]
+    public void The_ride_lengths_in_the_file_are_imported_and_checked()
+    {
+        var file = Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".pulse.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "{\"schema\":1,\"pulses\":[{\"accountUserId\":42,\"ringId\":\"mine8\",\"targetLayer\":2,"
+            + "\"rideFirstMs\":10000,\"rideBurstFarMs\":6000}]}");
+        var store = StoreWithRing();
+
+        var p = Assert.Single(PulseImporter.Build(PulseFile.Load(file), store.Rings, store.All, Macros()));
+        Assert.Equal((10000, 6000), (p.RideFirstMs, p.RideBurstFarMs));
+
+        var ex = Assert.Throws<InvalidDataException>(() => Build(StoreWithRing(), null, Entry() with { RideBurstFarMs = 40000 }));
+        Assert.Contains("rideBurstFarMs must be 500 to 30000", ex.Message);
+    }
+
+    [Fact]
     public void A_sweep_block_size_out_of_range_is_refused()
     {
         var ex = Assert.Throws<InvalidDataException>(() => Build(StoreWithRing(), null, Entry() with { SweepBlockPx = 300 }));

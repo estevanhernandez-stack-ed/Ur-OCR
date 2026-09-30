@@ -24,7 +24,11 @@ public sealed record PulseMacros(string AutoMineOff, string AutoMineOn, string G
 /// read lands far from it (PulseLoop.SettingReadMin/Max); null, the default, sweeps only on a read.
 /// OreSweepDwellMs is how long the ore sweep holds on each ore point (default 400 ms, the same range).
 /// Usables are optional charges fired by Ur Task hotbar-key macros (PulseUsables); null, the
-/// default, fires none. Stored in triggers.json under "pulses"; missing keys load as the spec defaults.
+/// default, fires none. RideFirstMs is the first ride after the start and after every Go to Top,
+/// before any calm read (default 8000 ms); RideBurstFarMs is the ride after a calm read 2 or more
+/// layers above the aim layer (default 5000 ms). A read 1 layer above rides BurstMs, and so does every
+/// burst (live 2026-09-30: 8 stop-read cycles of 2 s rides and 2.5 s reads took 39 s to reach black).
+/// Stored in triggers.json under "pulses"; missing keys load as the spec defaults.
 /// </summary>
 public sealed record PulseConfig(
     long AccountUserId,
@@ -40,8 +44,15 @@ public sealed record PulseConfig(
     bool SweepNearSide = true,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? SweepBlockPx = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PulseUsables? Usables = null,
-    int OreSweepDwellMs = PulseConfig.DefaultOreSweepDwellMs)
+    int OreSweepDwellMs = PulseConfig.DefaultOreSweepDwellMs,
+    int RideFirstMs = PulseConfig.DefaultRideFirstMs,
+    int RideBurstFarMs = PulseConfig.DefaultRideBurstFarMs)
 {
+    /// <summary>The first ride from the top (start, Go to Top): no read yet, and the upper layers take
+    /// longer than one burst to get through (owner, 2026-09-30).</summary>
+    public const int DefaultRideFirstMs = 8000;
+    /// <summary>The ride after a read 2 or more layers above the aim layer.</summary>
+    public const int DefaultRideBurstFarMs = 5000;
     /// <summary>How long the ore sweep holds on each ore point: most ore broke in one 0.3 s hold with
     /// damage boosters (live 2026-09-30); what survives goes to ClearAt on the next pass.</summary>
     public const int DefaultOreSweepDwellMs = 400;
@@ -62,7 +73,8 @@ public sealed record PulseConfig(
 public sealed record PulseUsable(string Macro, int EveryMs);
 
 /// <summary>
-/// An account's usables, each optional. Ride fires at the start of a ride only while the pulse is
+/// An account's usables, each optional. Ride fires once Auto Mine is on in a ride, and again each
+/// everyMs while the ride lasts, only while the pulse is
 /// sure it is above the aim layer (a Rover bomb on the way down): the last calm read named a layer
 /// above it, and no read has reached the aim layer or deeper since the last Go to Top; Target fires before a pass on the aim
 /// layer, then the loop settles and reads again, since the character may drop (a Core Charge). Never

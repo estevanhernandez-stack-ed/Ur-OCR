@@ -16,6 +16,9 @@ public static class PulseValidation
     /// <summary>The step range Ur Task's SweepPath takes, for the account's fallback block size.</summary>
     public const int MinSweepBlockPx = BridgeContract.MinSweepStep;
     public const int MaxSweepBlockPx = BridgeContract.MaxSweepStep;
+    /// <summary>The range of the first ride and the far ride (rideFirstMs, rideBurstFarMs).</summary>
+    public const int MinRideMs = 500;
+    public const int MaxRideMs = 30_000;
     /// <summary>The least time between two fires of one usable.</summary>
     public const int MinUsableEveryMs = 1000;
     public const int MaxUsableEveryMs = 600_000;
@@ -61,6 +64,10 @@ public static class PulseValidation
             return $"sweepDwellMs must be {MinSweepDwellMs} to {MaxSweepDwellMs}, not {p.SweepDwellMs}.";
         if (p.OreSweepDwellMs < MinSweepDwellMs || p.OreSweepDwellMs > MaxSweepDwellMs)
             return $"oreSweepDwellMs must be {MinSweepDwellMs} to {MaxSweepDwellMs}, not {p.OreSweepDwellMs}.";
+        if (p.RideFirstMs < MinRideMs || p.RideFirstMs > MaxRideMs)
+            return $"rideFirstMs must be {MinRideMs} to {MaxRideMs}, not {p.RideFirstMs}.";
+        if (p.RideBurstFarMs < MinRideMs || p.RideBurstFarMs > MaxRideMs)
+            return $"rideBurstFarMs must be {MinRideMs} to {MaxRideMs}, not {p.RideBurstFarMs}.";
         if (p.SweepBlockPx is < MinSweepBlockPx or > MaxSweepBlockPx)
             return $"sweepBlockPx must be {MinSweepBlockPx} to {MaxSweepBlockPx} (the step Ur Task takes), not {p.SweepBlockPx}.";
         if (FinderFor(ring, p.AimLayer) is { } finder && finder.Validate() is { } finderProblem)

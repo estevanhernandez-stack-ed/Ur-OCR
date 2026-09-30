@@ -62,8 +62,11 @@ internal static class PulseFixtures
     public static PulseMacros Macros() => new("id-off", "id-on", "id-top",
         MeasuredRing.RingOrder.Select(n => $"id-clear-{n}").ToList());
 
+    /// <summary>Every ride BurstMs (2 s), the first and the far ones too, so the loop tests keep one
+    /// ride length; PulseLoopRideTests sets RideFirstMs and RideBurstFarMs itself.</summary>
     public static PulseConfig Config(int target = 3, PulseMode mode = PulseMode.Top, long account = 42) =>
-        new(account, "mine8", target, mode, Macros: Macros());
+        new(account, "mine8", target, mode, Macros: Macros(),
+            RideFirstMs: PulseConfig.DefaultBurstMs, RideBurstFarMs: PulseConfig.DefaultBurstMs);
 }
 
 internal sealed class ScriptedReader : ISpotReader
