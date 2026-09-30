@@ -185,4 +185,29 @@ public class PulseStorageTests
         Assert.Equal(PulseMode.OneAbove, p.Mode);
         Assert.Equal(2000, p.BurstMs);
     }
+
+    [Fact]
+    public void Usables_survive_a_reload_and_are_left_out_when_not_set()
+    {
+        var set = TempFile();
+        new TriggerStore(set).UpsertPulse(Pulse() with
+        {
+            Usables = new PulseUsables(new PulseUsable("id-rover", 3000), new PulseUsable("id-core", 20000)),
+        });
+        var rideOnly = TempFile();
+        new TriggerStore(rideOnly).UpsertPulse(Pulse() with { Usables = new PulseUsables(Ride: new PulseUsable("id-rover", 3000)) });
+        var unset = TempFile();
+        new TriggerStore(unset).UpsertPulse(Pulse());
+
+        var json = File.ReadAllText(set);
+        Assert.Contains("\"usables\"", json);
+        Assert.Contains("\"everyMs\": 20000", json);
+        var u = Assert.Single(new TriggerStore(set).Pulses).Usables!;
+        Assert.Equal(new PulseUsable("id-rover", 3000), u.Ride);
+        Assert.Equal(new PulseUsable("id-core", 20000), u.Target);
+        Assert.DoesNotContain("\"target\"", File.ReadAllText(rideOnly));
+        Assert.Null(Assert.Single(new TriggerStore(rideOnly).Pulses).Usables!.Target);
+        Assert.DoesNotContain("usables", File.ReadAllText(unset));
+        Assert.Null(Assert.Single(new TriggerStore(unset).Pulses).Usables);
+    }
 }

@@ -22,7 +22,8 @@ public sealed record PulseMacros(string AutoMineOff, string AutoMineOn, string G
 /// SweepBlockPx is the block size the sweep steps by when none is read off the frame (the read tops
 /// out near 100 px, and a block down a shaft is 150 to 180 px), and the pass's block size whenever a
 /// read lands far from it (PulseLoop.SettingReadMin/Max); null, the default, sweeps only on a read.
-/// Stored in triggers.json under "pulses"; missing keys load as the spec defaults.
+/// Usables are optional charges fired by Ur Task hotbar-key macros (PulseUsables); null, the
+/// default, fires none. Stored in triggers.json under "pulses"; missing keys load as the spec defaults.
 /// </summary>
 public sealed record PulseConfig(
     long AccountUserId,
@@ -36,7 +37,8 @@ public sealed record PulseConfig(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PulseMacros? Macros = null,
     int SweepDwellMs = PulseConfig.DefaultSweepDwellMs,
     bool SweepNearSide = true,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? SweepBlockPx = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? SweepBlockPx = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PulseUsables? Usables = null)
 {
     /// <summary>How long the sweep holds on each block (owner decision 2): the main breaks a
     /// bottom-layer block in about 0.3 s; a weaker pickaxe needs longer.</summary>
@@ -49,6 +51,21 @@ public sealed record PulseConfig(
     [JsonIgnore]
     public int AimLayer => Mode == PulseMode.OneAbove ? TargetLayer - 1 : TargetLayer;
 }
+
+/// <summary>One usable: an Ur Task macro, by id, that fires a charge (a hotbar key), and the least
+/// time between two fires. JSON "macro" / "everyMs".</summary>
+public sealed record PulseUsable(string Macro, int EveryMs);
+
+/// <summary>
+/// An account's usables, each optional. Ride fires at the start of a ride while the last calm read
+/// was above the aim layer (a Rover bomb on the way down); Target fires before a pass on the aim
+/// layer, then the loop settles and reads again, since the character may drop (a Core Charge). Never
+/// while held (pause, dry run) or going to top. A usable Ur Task refuses, or that fails, is skipped
+/// that time and the loop goes on.
+/// </summary>
+public sealed record PulseUsables(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PulseUsable? Ride = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PulseUsable? Target = null);
 
 /// <summary>The Ur Task macro names the importer looks up. They must match the Ur Task half exactly.</summary>
 public static class PulseMacroNames

@@ -4,7 +4,7 @@ using RoRoRo.UrOcr.Storage;
 
 namespace RoRoRo.UrOcr.Engine;
 
-public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTop, Turning, Stopped }
+public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTop, Turning, Charging, Stopped }
 
 /// <summary>
 /// One account's ore stop pulse (spec 2026-09-28). Riding: Auto Mine on for BurstMs. Pausing: Auto
@@ -26,6 +26,11 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// everything it can and returns at the first wait. Nothing starts unless the account is in front,
 /// read again right before each macro; a playback already started is still followed.
 /// A clear or macro whose check could not run (CheckFailed) or that Ur Task lost (Lost) stops the loop.
+/// Usables (PulseUsables), each at most once per its everyMs: the ride usable fires at the start of a
+/// ride or burst while the last calm read was above the aim layer; the target usable fires when a read
+/// lands on the aim layer, before that pass (Charging: the macro, then SettleMs and a read, since the
+/// character may drop). A usable is its own call between the pulse's calls, never retried: refused,
+/// busy or failed, it is skipped that time and the loop goes on.
 /// </summary>
 public sealed class PulseLoop
 {
@@ -96,6 +101,9 @@ public sealed class PulseLoop
     private int _emptyPasses;              // passes in a row with nothing in reach, for the growing burst
     private int _burstMs;                  // this Bursting state's ride
     private int _turns;                    // camera turns since the last progress (cleared pass, new layer, Go to Top, burst)
+    private DateTimeOffset? _rideFired;    // the ride usable's last try, for its everyMs
+    private DateTimeOffset? _targetFired;  // the target usable's last try
+    private string? _usable;               // "ride" or "target" while that usable's call is in flight
 
     public PulseLoop(PulseConfig config, IReadOnlyList<RingDefinition> rings, IReadOnlyList<Trigger> triggers,
         ISpotReader reader, IMacroRunClient macros, IClock clock, Action<string> log)
@@ -123,7 +131,8 @@ public sealed class PulseLoop
                   ? ""
                   : $", sweeping stone ({config.SweepDwellMs} ms a point, near side {(config.SweepNearSide ? "on" : "off")}"
                     + (config.SweepBlockPx is { } px ? $", {px} px blocks without a read)" : ")"));
-        _log($"started: ring {config.RingId}, target layer {config.TargetLayer} ({mode}), clearing on {_ring!.Layers[config.AimLayer - 1].Name} with {how}");
+        _log($"started: ring {config.RingId}, target layer {config.TargetLayer} ({mode}), clearing on {_ring!.Layers[config.AimLayer - 1].Name} with {how}"
+             + UsablesLine(config.Usables));
     }
 
     public long AccountUserId => _config.AccountUserId;
@@ -172,6 +181,7 @@ public sealed class PulseLoop
         {
             case PulseState.Riding:
             case PulseState.Bursting:
+                if (!_macroDone && RideDue(now) is { } ride) return FireUsable("ride", ride, now);
                 if (!_macroDone) return Begin(M.AutoMineOn, PulseMacroNames.AutoMineOn);
                 return now >= _until && Enter(PulseState.Pausing);
 
@@ -194,6 +204,10 @@ public sealed class PulseLoop
 
             case PulseState.Turning:
                 if (!_macroDone) return Begin(M.CameraTurnLeft!, PulseMacroNames.CameraTurnLeft);
+                return now >= _until && Enter(PulseState.Reading);
+
+            case PulseState.Charging:
+                if (!_macroDone) return FireUsable("target", _config.Usables!.Target!, now);
                 return now >= _until && Enter(PulseState.Reading);
 
             default:
@@ -248,6 +262,7 @@ public sealed class PulseLoop
             ? $"layer {layer} ({Percent(read.Shares[layer])} of the area)"
             : $"layer {layer} ({Percent(read.Shares[layer])} of the area, next {next.Name} {Percent(next.Share)})";
         if (Route(layer, seen, now) is { } moved) return moved;
+        if (TargetDue(now)) return Enter(PulseState.Charging);
 
         var targets = TargetFinder.Find(frame, pass);
         if (_pitchUnread) targets = NearestStone(targets, UnreadStonePoints);
@@ -299,6 +314,7 @@ public sealed class PulseLoop
 
         var seen = $"layer {layer} ({votes[layer]} of {samples.Count} spots)";
         if (Route(layer, seen, now) is { } moved) return moved;
+        if (TargetDue(now)) return Enter(PulseState.Charging);
 
         _targets = null;
         _sweep = null;
@@ -584,8 +600,63 @@ public sealed class PulseLoop
         return true;
     }
 
+    /// <summary>The ride usable when one is set, the last calm read was above the aim layer (none yet,
+    /// as at the top, is not) and its everyMs has passed since the last try; else null.</summary>
+    private PulseUsable? RideDue(DateTimeOffset now) =>
+        _config.Usables?.Ride is { } ride && Layer is { } layer && LayerNumber(layer) < _config.AimLayer
+        && Due(_rideFired, ride, now)
+            ? ride
+            : null;
+
+    /// <summary>Whether the target usable is set and its everyMs has passed. Asked only on a read that
+    /// landed on the aim layer (Route left it to clear).</summary>
+    private bool TargetDue(DateTimeOffset now) =>
+        _config.Usables?.Target is { } target && Due(_targetFired, target, now);
+
+    private static bool Due(DateTimeOffset? last, PulseUsable u, DateTimeOffset now) =>
+        last is not { } at || (now - at).TotalMilliseconds >= u.EveryMs;
+
+    /// <summary>Starts a usable as a call of its own that is never retried (MacroCall once). The try
+    /// counts toward everyMs whether Ur Task takes it or not, so a refusal is not asked again at once.</summary>
+    private bool FireUsable(string kind, PulseUsable usable, DateTimeOffset now)
+    {
+        if (kind == "ride") _rideFired = now; else _targetFired = now;
+        _usable = kind;
+        _call.Begin(usable.Macro, $"Usable {kind}", once: true);
+        return true;
+    }
+
+    /// <summary>A usable's call ended: logged, never a stop. The ride goes on to Auto Mine on; the
+    /// target settles before the next read when it fired, and reads at once when it was skipped.</summary>
+    private void OnUsableEnded(string kind, CallResult r)
+    {
+        var macro = (kind == "ride" ? _config.Usables!.Ride! : _config.Usables!.Target!).Macro;
+        _log(r.Status == CallStatus.Done
+            ? $"fired usable {kind} (macro {macro})"
+            : $"skipped usable {kind} (macro {macro}): {r.Detail ?? r.Status.ToString()}");
+        if (State != PulseState.Charging) return;
+        _macroDone = true;
+        _until = r.Status == CallStatus.Done ? TimerFor(PulseState.Charging) : _clock.Now;
+    }
+
+    private static string UsablesLine(PulseUsables? u)
+    {
+        var parts = new List<string>();
+        if (u?.Ride is { } ride) parts.Add($"ride every {Seconds(ride.EveryMs)} s");
+        if (u?.Target is { } target) parts.Add($"target every {Seconds(target.EveryMs)} s");
+        return parts.Count == 0 ? "" : $"; usables: {string.Join(", ", parts)}";
+    }
+
+    private static string Seconds(int ms) => (ms / 1000.0).ToString("0.#", CultureInfo.InvariantCulture);
+
     private void OnCallEnded(CallResult r)
     {
+        if (_usable is { } kind)
+        {
+            _usable = null;
+            OnUsableEnded(kind, r);
+            return;
+        }
         if (r.Status == CallStatus.Stop)
         {
             Stop(r.Detail ?? $"'{r.Label}' could not run.");
@@ -655,7 +726,7 @@ public sealed class PulseLoop
     /// <summary>Always true, so Act can `return Enter(...)` and the tick carries on in the new state.</summary>
     private bool Enter(PulseState next, bool macroDone = false)
     {
-        if (next is PulseState.Riding or PulseState.Bursting or PulseState.GoingToTop or PulseState.Turning)
+        if (next is PulseState.Riding or PulseState.Bursting or PulseState.GoingToTop or PulseState.Turning or PulseState.Charging)
             ForgetNoOutline();
         State = next;
         _burstMs = _config.BurstMs;       // a growing burst is set by RideLonger after this
@@ -670,6 +741,7 @@ public sealed class PulseLoop
         PulseState.Bursting => _clock.Now.AddMilliseconds(_burstMs),
         PulseState.Pausing => _clock.Now.AddMilliseconds(_config.SettleMs),
         PulseState.Turning => _clock.Now.AddMilliseconds(_config.SettleMs),
+        PulseState.Charging => _clock.Now.AddMilliseconds(_config.SettleMs),
         _ => null,
     };
 
@@ -680,7 +752,8 @@ public sealed class PulseLoop
         // never stops), so it groups with "may still be on" too, same as a Go to Top in flight.
         // Reading, Clearing and Turning (only ever entered from Clearing) always start after Auto
         // Mine off has completed, so it is off.
-        var autoMine = State is PulseState.Reading or PulseState.Clearing or PulseState.Turning
+        // Charging (only ever entered from Reading) is the same.
+        var autoMine = State is PulseState.Reading or PulseState.Clearing or PulseState.Turning or PulseState.Charging
             ? "Auto Mine is off."
             : "Auto Mine may still be on.";
         var full = $"{reason} {autoMine}";

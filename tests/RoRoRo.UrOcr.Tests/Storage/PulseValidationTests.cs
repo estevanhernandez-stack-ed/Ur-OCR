@@ -146,4 +146,30 @@ public class PulseValidationTests
         Assert.Equal(new[] { 0, 1, 2 }, spots.Select(t => t.Ring!.Order));
         Assert.All(spots, t => Assert.Equal("mine8", t.Ring!.RingId));
     }
+
+    [Theory]
+    [InlineData(999)]
+    [InlineData(600_001)]
+    public void A_usable_every_out_of_range_is_refused(int ms)
+    {
+        var p = Pulse() with { Usables = new PulseUsables(Ride: new PulseUsable("id-rover", ms)) };
+
+        Assert.Equal($"usables.ride.everyMs must be 1000 to 600000, not {ms}.", Check(p));
+    }
+
+    [Fact]
+    public void A_usable_with_no_macro_is_refused()
+    {
+        var p = Pulse() with { Usables = new PulseUsables(Target: new PulseUsable(" ", 20000)) };
+
+        Assert.Equal("usables.target.macro must be an Ur Task macro id.", Check(p));
+    }
+
+    [Fact]
+    public void Usables_are_optional_each()
+    {
+        Assert.Null(Check(Pulse() with { Usables = new PulseUsables() }));
+        Assert.Null(Check(Pulse() with { Usables = new PulseUsables(Ride: new PulseUsable("id-rover", 1000)) }));
+        Assert.Null(Check(Pulse() with { Usables = new PulseUsables(Target: new PulseUsable("id-core", 600_000)) }));
+    }
 }

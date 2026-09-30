@@ -60,6 +60,22 @@ public class PulseImportCommandTests : IDisposable
     }
 
     [Fact]
+    public void The_report_names_the_usables()
+    {
+        WriteMacros();
+        File.WriteAllText(Path.Combine(MacrosDir, "rover.json"), JsonSerializer.Serialize(new { id = "id-rover", name = "Usable: Rover (key 5)" }));
+        File.WriteAllText(Path.Combine(MacrosDir, "core.json"), JsonSerializer.Serialize(new { id = "id-core", name = "Usable: Core Charge (key 1)" }));
+        var path = Path.Combine(_dir, "pulse.json");
+        File.WriteAllText(path, "{\"schema\":1,\"pulses\":[{\"accountUserId\":42,\"ringId\":\"mine8\",\"targetLayer\":2,"
+            + "\"usables\":{\"ride\":{\"macro\":\"id-rover\",\"everyMs\":3000},\"target\":{\"macro\":\"id-core\",\"everyMs\":20000}}}]}");
+
+        Assert.Equal(0, Run(() => false, path));
+
+        Assert.Contains("rock cap 5 min, usables: ride Usable: Rover (key 5) every 3 s, target Usable: Core Charge (key 1) every 20 s",
+            File.ReadAllText(Report));
+    }
+
+    [Fact]
     public void Without_a_camera_turn_macro_the_report_says_the_pulse_will_not_look_around()
     {
         WriteMacros();

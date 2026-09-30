@@ -490,4 +490,49 @@ public class MacroCallTests
         Assert.Equal((CallStatus.Done, "SweepPath (3 points)"), (end.Status, end.Label));
         Assert.Equal(new[] { ScriptedMacros.SweepId }, macros.RunIds);
     }
+
+    private static Rig BuildOnce()
+    {
+        var rig = Build();
+        rig.Call.Begin("id-rover", "Usable ride", once: true);
+        return rig;
+    }
+
+    [Fact]
+    public async Task A_once_call_refused_busy_is_skipped_not_retried()
+    {
+        var rig = BuildOnce();
+        rig.Macros.RunReplies.Enqueue(ScriptedMacros.Refusal("busy"));
+
+        var end = await Step(rig);
+
+        Assert.Equal(CallStatus.Skipped, end.Status);
+        Assert.Equal("Ur Task said busy", end.Detail);
+        Assert.False(rig.Call.Active);
+        Assert.Empty(rig.Log);
+    }
+
+    [Fact]
+    public async Task A_once_call_interrupted_is_skipped_not_run_again()
+    {
+        var rig = BuildOnce();
+        rig.Macros.Script("id-rover", ScriptedMacros.Aborted, ScriptedMacros.Finished);
+        await Step(rig);
+
+        var end = await Step(rig, front: false);
+
+        Assert.Equal(CallStatus.Skipped, end.Status);
+        Assert.Contains("interrupted", end.Detail);
+        Assert.Single(rig.Macros.Runs);
+    }
+
+    [Fact]
+    public async Task A_once_call_that_finishes_is_done()
+    {
+        var rig = BuildOnce();
+        await Step(rig);
+
+        Assert.Equal(CallStatus.Done, (await Step(rig)).Status);
+        Assert.Equal(new[] { "id-rover" }, rig.Macros.RunIds);
+    }
 }

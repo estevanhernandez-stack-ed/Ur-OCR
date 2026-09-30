@@ -29,7 +29,9 @@ public sealed record CallResult(CallStatus Status, string Label, string? Detail 
 /// no-targets-resolved retry every <see cref="RetryMs"/>. A playback that ends aborted or refused
 /// after the account was seen behind was a focus change and runs again (at most
 /// <see cref="MaxInterruptions"/> times in a row); aborted while the account stayed in front is
-/// taken as Esc and stops. Every other refusal stops, with the reason in Detail.
+/// taken as Esc and stops. Every other refusal stops, with the reason in Detail. A call begun
+/// <c>once</c> (a pulse usable) never retries or reruns: a busy, ack-timeout or no-targets refusal
+/// or an interruption ends it as Skipped, with the reason in Detail.
 /// </summary>
 public sealed class MacroCall(IMacroRunClient client, string target, IClock clock, Action<string> log)
 {
@@ -45,12 +47,13 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
     private string? _loggedRefusal;
     private int _interruptions;
     private bool _sawBehind;
+    private bool _once;
 
     public bool Active => _start is not null;
     public string Label => _label;
 
-    public void Begin(string macroId, string label) =>
-        Arm(label, ct => client.RunAsync(macroId, new[] { target }, InterAltDelayMs, ct));
+    public void Begin(string macroId, string label, bool once = false) =>
+        Arm(label, ct => client.RunAsync(macroId, new[] { target }, InterAltDelayMs, ct), once);
 
     /// <summary>One ClearAt for this account: every point in order as one playback, followed through
     /// GetPlayback like a macro. The request is built once, so a busy retry or an interrupted rerun
@@ -77,8 +80,9 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
     /// <summary>The name Ur Task's log gives a SweepPath playback.</summary>
     public static string SweepLabel(int points) => $"SweepPath ({points} {(points == 1 ? "point" : "points")})";
 
-    private void Arm(string label, Func<CancellationToken, Task<RunMacroResponse>> start)
+    private void Arm(string label, Func<CancellationToken, Task<RunMacroResponse>> start, bool once = false)
     {
+        _once = once;
         _start = start;
         _label = label;
         _playbackId = null;
@@ -118,6 +122,7 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
             case BridgeReasons.Busy:
             case BridgeReasons.AckTimeout:
             case BridgeReasons.NoTargets:
+                if (_once) return End(CallStatus.Skipped, $"Ur Task said {resp.Reason}");
                 _retryAt = now.AddMilliseconds(RetryMs);
                 if (_loggedRefusal != resp.Reason)
                 {
@@ -177,6 +182,7 @@ public sealed class MacroCall(IMacroRunClient client, string target, IClock cloc
                 return End(CallStatus.Stop,
                     $"'{_label}' ended while the account was in front ({r.Detail}); taken as Esc, so the pulse loop stops.");
             case PlaybackStates.Failed when r.Reason is BridgeReasons.Aborted or BridgeReasons.Refused:
+                if (_once) return End(CallStatus.Skipped, $"'{_label}' was interrupted ({r.Detail})");
                 if (++_interruptions > MaxInterruptions)
                     return End(CallStatus.Stop, $"'{_label}' was interrupted {MaxInterruptions + 1} times in a row: {r.Detail}");
                 log($"'{_label}' was interrupted ({r.Detail}); it runs again when the account is in front");

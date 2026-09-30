@@ -29,6 +29,8 @@ public static class PulseImporter
             var pulse = entry with { Macros = resolved };
             if (PulseValidation.Validate(pulse, rings, triggers) is { } problem)
                 throw new InvalidDataException($"Account {entry.AccountUserId}: {problem}");
+            if ((MissingUsable(pulse.Usables?.Ride, "ride", macros) ?? MissingUsable(pulse.Usables?.Target, "target", macros)) is { } missing)
+                throw new InvalidDataException($"Account {entry.AccountUserId}: {missing}");
             result.Add(pulse);
         }
         return result;
@@ -40,6 +42,13 @@ public static class PulseImporter
         foreach (var p in pulses) store.UpsertPulse(p);
         return pulses;
     }
+
+    /// <summary>A usable names its macro by id (the file's own, unlike the looked-up ones): it must be one
+    /// Ur Task has, or every fire would be refused and skipped.</summary>
+    private static string? MissingUsable(PulseUsable? u, string key, IReadOnlyList<UrTaskMacro> macros) =>
+        u is null || macros.Any(m => string.Equals(m.Id, u.Macro, StringComparison.OrdinalIgnoreCase))
+            ? null
+            : $"usables.{key}.macro {u.Macro} is not one of Ur Task's macros: install it in Ur Task first.";
 
     /// <summary>Every macro the loop runs, by name, exactly one each (RingImporter.ResolveMacro rules).
     /// The camera turn is optional: missing is null, two of that name are refused.</summary>

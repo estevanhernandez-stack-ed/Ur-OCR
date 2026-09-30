@@ -47,7 +47,7 @@ internal static class PulseImportCommand
                     lines.Add($"triggers.json was unreadable; the old file is kept at {backup}");
                 var pulses = PulseImporter.Apply(store, file, macros);   // builds first: a bad file writes nothing
                 lines.Add($"imported {pulses.Count} pulse loop{(pulses.Count == 1 ? "" : "s")} into {triggersPath}");
-                foreach (var p in pulses) lines.Add("  " + Describe(p));
+                foreach (var p in pulses) lines.Add("  " + Describe(p, macros));
                 if (pulses.Any(p => p.Macros?.CameraTurnLeft is null))
                     lines.Add($"no {PulseMacroNames.CameraTurnLeft} macro: the pulse won't look around");
                 code = 0;
@@ -63,8 +63,20 @@ internal static class PulseImportCommand
         return code;
     }
 
-    internal static string Describe(PulseConfig p) =>
+    internal static string Describe(PulseConfig p, IReadOnlyList<UrTaskMacro> macros) =>
         $"account {p.AccountUserId}: ring {p.RingId}, target layer {p.TargetLayer} " +
         $"({(p.Mode == PulseMode.OneAbove ? "one above" : "top")}), burst {p.BurstMs} ms, " +
-        $"settle {p.SettleMs} ms, rock cap {p.RockCapMinutes} min{(p.Enabled ? "" : ", turned off")}";
+        $"settle {p.SettleMs} ms, rock cap {p.RockCapMinutes} min{Usables(p.Usables, macros)}{(p.Enabled ? "" : ", turned off")}";
+
+    /// <summary>", usables: ride Usable: Rover (key 5) every 3 s, ..." naming each macro as Ur Task does.</summary>
+    private static string Usables(PulseUsables? u, IReadOnlyList<UrTaskMacro> macros)
+    {
+        string One(string kind, PulseUsable x) =>
+            $"{kind} {macros.FirstOrDefault(m => string.Equals(m.Id, x.Macro, StringComparison.OrdinalIgnoreCase))?.Name ?? x.Macro} " +
+            $"every {(x.EveryMs / 1000.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} s";
+        var parts = new List<string>();
+        if (u?.Ride is { } ride) parts.Add(One("ride", ride));
+        if (u?.Target is { } target) parts.Add(One("target", target));
+        return parts.Count == 0 ? "" : ", usables: " + string.Join(", ", parts);
+    }
 }

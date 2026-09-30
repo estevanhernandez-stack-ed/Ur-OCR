@@ -59,6 +59,17 @@ The result is in `pulse-import.log`. An account with a pulse no longer uses the 
 
 If Ur Task restarts mid-macro (a running playback is never dropped, and Ur Task keeps an ended one for 10 minutes), the pulse stops rather than guess whether it pressed anything; restart Ur OCR to start it again. Pause all (F9) and dry run hold the pulse too, though a macro already in flight keeps being followed: in dry run, a pulse-owned ring shows nothing, since its ring triggers stand down and the pulse itself does not act on anything new.
 
+### Usables
+
+A pulse can fire charges from the hotbar on the way. Each account can have a `ride` usable and a `target` usable, each an Ur Task macro (by id) that presses one hotbar key, and the least time between two fires:
+
+    { "accountUserId": 123456789, "ringId": "mine8", "targetLayer": 3,
+      "usables": {
+        "ride":   { "macro": "a1000000-0000-4000-8000-000000000011", "everyMs": 3000 },
+        "target": { "macro": "a1000000-0000-4000-8000-000000000012", "everyMs": 20000 } } }
+
+`ride` fires at the start of a ride while the last calm read was above the layer the pulse clears on (a Rover bomb, key 5, on the way down); not on the first ride from the top, where the game says "You cannot do that here!". `target` fires when a read lands on the layer the pulse clears on (the target, or the one above it with `oneAbove`), before that pass; then the pulse waits `settleMs` and reads again, since a Core Charge (key 1) drops the character down its shaft. Each fires at most once per `everyMs` (1000 to 600000), never while paused, in dry run or going to top, and never in the middle of another macro. If Ur Task is busy, refuses it or it fails, that fire is skipped and the pulse carries on. The log says `fired usable ride (macro <id>)` or `skipped usable ride (macro <id>): <why>`. Either can be left out; without `usables`, nothing changes. `--import-pulse` checks each macro id is one of Ur Task's.
+
 ### Ore finder
 
 The eight ring spots touch about 8 of the 70 blocks in view. With an ore finder measured for the layer an account clears on, the pulse looks at the calm frame around your character instead: every patch in an ore colour within reach (the grid's radius plus one block) becomes a target, nearest first, then a grid of points one block apart out to `radiusBlocks` blocks (5 by default) around your character, nearest first, 64 points at most. Big ore blocks get several spots across them, and the finder no longer aims at your own character. It sends them to Ur Task as one ClearAt call. Ur Task sizes the window to the measured client, hovers each point, checks the white outline, and clears what your pickaxe can reach. A pass that cleared anything reads again; a pass where every point was skipped rides another burst.

@@ -160,4 +160,43 @@ public class PulseImporterTests
         Assert.Contains("Account 42", ex.Message);
         Assert.Contains("sweepBlockPx must be 8 to 240", ex.Message);
     }
+
+    [Fact]
+    public void The_usables_in_the_file_are_imported_by_id()
+    {
+        var file = Path.Combine(Path.GetTempPath(), "urocr-tests", Guid.NewGuid().ToString("N") + ".pulse.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "{\"schema\":1,\"pulses\":[{\"accountUserId\":42,\"ringId\":\"mine8\",\"targetLayer\":2,"
+            + "\"usables\":{\"ride\":{\"macro\":\"id-rover\",\"everyMs\":3000},\"target\":{\"macro\":\"id-core\",\"everyMs\":20000}}}]}");
+        var store = StoreWithRing();
+        var macros = Macros().Append(new UrTaskMacro("id-rover", "Usable: Rover (key 5)"))
+            .Append(new UrTaskMacro("id-core", "Usable: Core Charge (key 1)")).ToList();
+
+        var p = Assert.Single(PulseImporter.Build(PulseFile.Load(file), store.Rings, store.All, macros));
+
+        Assert.Equal(new PulseUsable("id-rover", 3000), p.Usables!.Ride);
+        Assert.Equal(new PulseUsable("id-core", 20000), p.Usables.Target);
+    }
+
+    [Fact]
+    public void A_usable_macro_Ur_Task_does_not_have_is_refused()
+    {
+        var entry = Entry() with { Usables = new PulseUsables(Target: new PulseUsable("id-missing", 20000)) };
+
+        var ex = Assert.Throws<InvalidDataException>(() => Build(StoreWithRing(), null, entry));
+
+        Assert.Contains("Account 42", ex.Message);
+        Assert.Contains("usables.target.macro id-missing is not one of Ur Task's macros", ex.Message);
+    }
+
+    [Fact]
+    public void A_usable_every_out_of_range_is_refused_at_import()
+    {
+        var macros = Macros().Append(new UrTaskMacro("id-rover", "Usable: Rover (key 5)")).ToList();
+        var entry = Entry() with { Usables = new PulseUsables(Ride: new PulseUsable("id-rover", 500)) };
+
+        var ex = Assert.Throws<InvalidDataException>(() => Build(StoreWithRing(), macros, entry));
+
+        Assert.Contains("usables.ride.everyMs must be 1000 to 600000", ex.Message);
+    }
 }

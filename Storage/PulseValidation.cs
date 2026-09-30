@@ -16,6 +16,9 @@ public static class PulseValidation
     /// <summary>The step range Ur Task's SweepPath takes, for the account's fallback block size.</summary>
     public const int MinSweepBlockPx = BridgeContract.MinSweepStep;
     public const int MaxSweepBlockPx = BridgeContract.MaxSweepStep;
+    /// <summary>The least time between two fires of one usable.</summary>
+    public const int MinUsableEveryMs = 1000;
+    public const int MaxUsableEveryMs = 600_000;
 
     /// <summary>The ring's spot triggers in ring order, enabled or not: the pulse reads their
     /// positions and sample boxes even when the 0.5.0 triggers themselves are switched off.</summary>
@@ -61,6 +64,9 @@ public static class PulseValidation
         if (FinderFor(ring, p.AimLayer) is { } finder && finder.Validate() is { } finderProblem)
             return $"Ring {p.RingId}'s ore finder for {finder.Layer}: {finderProblem}";
 
+        if ((Usable(p.Usables?.Ride, "ride") ?? Usable(p.Usables?.Target, "target")) is { } usableProblem)
+            return usableProblem;
+
         var orders = SpotsOf(p.RingId, triggers).Select(t => t.Ring!.Order).ToList();
         if (!orders.SequenceEqual(Enumerable.Range(0, SpotCount)))
             return $"Ring {p.RingId} needs {SpotCount} spot triggers, orders 0 to {SpotCount - 1}; it has {orders.Count}. Import the ring first (--import-ring).";
@@ -71,6 +77,15 @@ public static class PulseValidation
             return "macros must name Auto Mine off, Auto Mine on and Go to Top.";
         if (m.Clear is null || m.Clear.Count != SpotCount || m.Clear.Any(string.IsNullOrWhiteSpace))
             return $"macros.clear must list {SpotCount} macro ids, one per spot in ring order.";
+        return null;
+    }
+
+    private static string? Usable(PulseUsable? u, string key)
+    {
+        if (u is null) return null;
+        if (string.IsNullOrWhiteSpace(u.Macro)) return $"usables.{key}.macro must be an Ur Task macro id.";
+        if (u.EveryMs < MinUsableEveryMs || u.EveryMs > MaxUsableEveryMs)
+            return $"usables.{key}.everyMs must be {MinUsableEveryMs} to {MaxUsableEveryMs}, not {u.EveryMs}.";
         return null;
     }
 }
