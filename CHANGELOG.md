@@ -25,7 +25,8 @@
 
 ### Fixed
 
-- The ore finder never aims at the game's buttons (the bottom bar, the left column, the top bar). A spot on the inventory button once opened the menu and stopped the pulse.
+- The ore finder and the sweep never aim at the game's buttons: the Roblox menu, Go to Top, the icon column on the left, the hotbar with the pets button, and the update timer. A spot on the inventory button once opened the menu and stopped the pulse.
+- **Blocks beside Go to Top and right of the hotbar are no longer skipped.** The buttons were masked as full-width bands (everything above y 70 and at or below y 470 of the 800x599 window), which threw away the top strip either side of Go to Top and the ground between the pets button and the update timer. The mask is now a box per button, so the highest click sits just under Go to Top and beside it, and at 110 px blocks the sweep gains the block right of the hotbar (24 points to 25). Every finder point also stays 12 px inside the window, like the sweep's. The block size and layer reads still keep to the full-width bands: they read one area around your character, which can't step around a button, and the hotbar's evenly spaced slots would read as blocks.
 - A block size read at under half the layer's usual size is treated as unread (it was the texture inside the blocks).
 - **A block size read far from the account's `sweepBlockPx` is ignored.** In a live run the read swung from 104 px to 30, 33, 29 and 47 px on later passes while the blocks stayed near 110, and each of those passes gridded, boxed and swept at the wrong size (a 90-point sweep at 30 px). With `sweepBlockPx` set, a read under three quarters or over four thirds of it is ignored and the setting is the block size for the whole pass (the ore finder's grid and outline box as well as the sweep), logged as `block size 110 px (account setting; read 30 px is far from it)`. Without the setting, nothing changes.
 

@@ -37,9 +37,12 @@ public static class PitchEstimator
     public const int CharacterRadius = 16;
 
     /// <summary>The HUD in this frame, scaled from the measured client: a read stays right of Left,
-    /// below Top and above Bottom. Shared with TargetFinder via HudMask.</summary>
+    /// below Top and above Bottom, the full width (HudMask.ReadBounds, shared with LayerShare). Wider
+    /// than the button boxes TargetFinder and SweepPath skip: the read is one square around the
+    /// character, so it cannot step around a button, and the hotbar's 78 px slots would win the
+    /// autocorrelation.</summary>
     public static (int Left, int Top, int Bottom) HudBounds(FramePixels frame) =>
-        HudMask.Bounds(frame.Width, frame.Height);
+        HudMask.ReadBounds(frame.Width, frame.Height);
 
     public static PitchEstimate? Estimate(FramePixels frame, int centerX, int centerY, int minPitch = CharacterRadius, int maxPitch = 240)
     {

@@ -16,9 +16,11 @@ public sealed record FinderTarget(int X, int Y, bool Ore, string Label);
 /// the character are dropped (the sprite covers that block and reads as ore), and of two ore points
 /// closer than half a block the one nearer the character stays. Then stone: a grid every Pitch out
 /// to RadiusBlocks blocks around the character, less the points inside an ore patch; the centre
-/// point always stays. Points whose outline box would leave the client are dropped, as is any point
-/// (ore or stone) inside the HUD mask shared with PitchEstimator (HudMask): the bottom bar, the left
-/// icon column, the top bar. Ore nearest first, then stone nearest first, at most MaxPoints. Every
+/// point always stays. Points whose outline box would leave the client, or that lie less than
+/// EdgeMarginPx inside it, are dropped, as is any point (ore or stone) on one of the game's buttons
+/// (HudMask.Boxes, shared with SweepPath): the Roblox menu, Go to Top, the left icon column, the
+/// hotbar and the update timer. The rest of the top strip and the ground right of the hotbar are
+/// game. Ore nearest first, then stone nearest first, at most MaxPoints. Every
 /// coordinate is in the finder's measured client pixels; the frame may be another size and is sampled
 /// scaled.
 /// </summary>
@@ -27,6 +29,8 @@ public static class TargetFinder
     public const int MaxPoints = BridgeContract.MaxClearAtPoints;
     /// <summary>A block at Pitch / 4 is about 16 samples; one lone hit is a sparkle, not ore.</summary>
     public const int MinPatchSamples = 2;
+    /// <summary>How far every point stays inside the client, the same as the sweep's.</summary>
+    public const int EdgeMarginPx = SweepPath.EdgeMarginPx;
 
     public static IReadOnlyList<FinderTarget> Find(FramePixels frame, FinderSetup f)
     {
@@ -81,7 +85,7 @@ public static class TargetFinder
                 if (i * i + j * j > r * r) continue;
                 var x = f.CenterX + i * f.Pitch;
                 var y = f.CenterY + j * f.Pitch;
-                if (!f.BoxFits(x, y) || HudMask.Contains(x, y, f.ClientW, f.ClientH)) continue;
+                if (!Clickable(x, y, f)) continue;
                 int cx = x / step, cy = y / step;
                 var centre = i == 0 && j == 0;   // the block under the character: ore points skip it, so stone keeps it
                 if (!centre && cx < cols && cy < rows && inOre[cx, cy]) continue;
@@ -90,7 +94,7 @@ public static class TargetFinder
 
         var halfBlock2 = (long)f.Pitch * f.Pitch / 4;
         var kept = new List<(int X, int Y)>();
-        foreach (var p in Nearest(ore.Where(p => f.BoxFits(p.X, p.Y) && !HudMask.Contains(p.X, p.Y, f.ClientW, f.ClientH)
+        foreach (var p in Nearest(ore.Where(p => Clickable(p.X, p.Y, f)
                                                   && Dist2(p, f.CenterX, f.CenterY) > halfBlock2), f))
             if (kept.All(k => Dist2(p, k.X, k.Y) >= halfBlock2)) kept.Add(p);
 
@@ -120,6 +124,12 @@ public static class TargetFinder
         if (maxX - minX < f.Pitch && maxY - minY < f.Pitch)
             yield return (Round(samples.Average(s => s.X)), Round(samples.Average(s => s.Y)));
     }
+
+    /// <summary>The outline box fits, the point is EdgeMarginPx inside the client, and it is off the HUD.</summary>
+    private static bool Clickable(int x, int y, FinderSetup f) =>
+        f.BoxFits(x, y)
+        && x >= EdgeMarginPx && y >= EdgeMarginPx && x <= f.ClientW - 1 - EdgeMarginPx && y <= f.ClientH - 1 - EdgeMarginPx
+        && !HudMask.Contains(x, y, f.ClientW, f.ClientH);
 
     private static int CeilDiv(int a, int b) => (int)Math.Ceiling((double)a / b);
 

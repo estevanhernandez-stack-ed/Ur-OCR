@@ -228,8 +228,9 @@ public class TargetFinderTests
     }
 
     // Bug (2026-09-28): a ClearAt point landed on the inventory button in the bottom bar and opened
-    // the menu. TargetFinder now drops every point (ore and stone) inside the HUD mask shared with
-    // PitchEstimator: x < 160, y < 70 or y > 470 in the measured 800x599 client.
+    // the menu. TargetFinder now drops every point (ore and stone) on one of the game's buttons
+    // (HudMask.Boxes, 2026-09-30): the Roblox menu, Go to Top, the left icon column (x < 160), the
+    // hotbar (y 470 and below, x 160 to 725) and the update timer, in the measured 800x599 client.
 
     private static FinderSetup HudSetup(int pitch, int radius, IReadOnlyList<OreColour>? ore = null) =>
         new("stone", 800, 599, Pitch: pitch, CenterX: 400, CenterY: 310, RadiusBlocks: radius,
@@ -238,13 +239,13 @@ public class TargetFinderTests
     [Fact]
     public void The_stone_grid_drops_points_in_the_hud_the_centre_stays()
     {
-        // Orthogonal neighbours only (radius 1): right (650,310) clears every bound, left (150,310) is
-        // left of the icon column, down (400,560) is past the hotbar, up (400,60) is above the top bar.
+        // Orthogonal neighbours only (radius 1): right (650,310) is game, left (150,310) is in the icon
+        // column, down (400,560) is on the hotbar, up (400,60) is on Go to Top.
         var targets = TargetFinder.Find(Frame(800, 599), HudSetup(pitch: 250, radius: 1));
 
         Assert.Equal(new[] { (400, 310), (650, 310) }, targets.Select(At).OrderBy(p => p.Item1));
         Assert.All(targets, t => Assert.False(t.Ore));
-        Assert.DoesNotContain(targets, t => t.X < 160 || t.Y < 70 || t.Y > 470);
+        Assert.DoesNotContain(targets, t => HudMask.Contains(t.X, t.Y, 800, 599));
     }
 
     [Fact]
@@ -269,5 +270,32 @@ public class TargetFinderTests
             HudSetup(pitch: 40, radius: 5, ore: ore));
 
         Assert.DoesNotContain(targets, t => t.Ore);
+    }
+
+    [Fact]
+    public void The_top_strip_beside_Go_to_Top_is_game()
+    {
+        // Character at (600, 310), radius 1: up (600, 40) sits in the top strip right of Go to Top,
+        // which the old full-width band threw away; down (600, 580) is on the hotbar; right is off
+        // the client.
+        var targets = TargetFinder.Find(Frame(800, 599), HudSetup(pitch: 270, radius: 1) with { CenterX = 600 });
+
+        Assert.Equal(new[] { (330, 310), (600, 40), (600, 310) }, targets.Select(At).OrderBy(p => p));
+    }
+
+    [Theory]
+    [InlineData(387, true)]    // (787, 310): 12 px inside the right edge
+    [InlineData(388, false)]   // (788, 310): 11 px, too close, though a 4 px outline box still fits
+    public void Every_point_stays_12_px_inside_the_client(int pitch, bool kept)
+    {
+        var setup = new FinderSetup("stone", 800, 599, Pitch: pitch, CenterX: 400, CenterY: 310, RadiusBlocks: 1,
+            Outline: new OutlineBox(4, 4), Ore: Array.Empty<OreColour>(), OreToleranceRgb: 40);
+
+        var targets = TargetFinder.Find(Frame(800, 599), setup);
+
+        Assert.True(setup.BoxFits(400 + pitch, 310));
+        Assert.Equal(kept, targets.Any(t => At(t) == (400 + pitch, 310)));
+        Assert.All(targets, t => Assert.InRange(t.X, TargetFinder.EdgeMarginPx, 799 - TargetFinder.EdgeMarginPx));
+        Assert.All(targets, t => Assert.InRange(t.Y, TargetFinder.EdgeMarginPx, 598 - TargetFinder.EdgeMarginPx));
     }
 }
