@@ -324,7 +324,10 @@ public sealed class PluginClientIntegrationTests
             runningAccounts: new EmptyAccounts(),
             eventBus: eventBus,
             launcher: new NoOpLauncher(),
-            uiTranslator: new PluginUITranslator(new NullUIHost()));
+            uiTranslator: new PluginUITranslator(new NullUIHost()),
+            activityProvider: new NullActivitySnapshotProvider(),
+            activityMarker: new NoActivityMarker(),
+            accountStopper: new NoStopper());
 
         // Production-shape interceptor: accessor returns null, plugin id comes from the
         // x-plugin-id request header (injected by HeaderInjectingCallInvoker in TestPluginClient).
@@ -360,6 +363,25 @@ public sealed class PluginClientIntegrationTests
     private sealed class EmptyAccounts : IRunningAccountsProvider
     {
         public IReadOnlyList<RunningAccountSnapshot> Snapshot() => [];
+    }
+
+    // The host's PluginHostService grew three required parameters (activity snapshots, the
+    // activity marker, the account stopper). This test needs none of them to do anything.
+    // Mirrors Ur Task's stand-ins.
+    private sealed class NullActivitySnapshotProvider : IActivitySnapshotProvider
+    {
+        public IReadOnlyList<AccountActivitySnapshot> Snapshot() => [];
+    }
+
+    private sealed class NoActivityMarker : IAccountActivityMarker
+    {
+        public void Mark(string accountId) { }
+    }
+
+    private sealed class NoStopper : IPluginAccountStopper
+    {
+        public IReadOnlyList<string> TrackedAccountIds => [];
+        public bool StopAccount(string accountId) => false;
     }
 
     private sealed class NoOpLauncher : IPluginLaunchInvoker
