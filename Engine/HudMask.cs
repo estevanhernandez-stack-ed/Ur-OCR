@@ -29,6 +29,6 @@ public static class HudMask
     public static bool Contains(int x, int y, int width, int height)
     {
         var (left, top, bottom) = Bounds(width, height);
-        return x < left || y < top || y > bottom;
+        return x < left || y < top || y >= bottom;
     }
 }

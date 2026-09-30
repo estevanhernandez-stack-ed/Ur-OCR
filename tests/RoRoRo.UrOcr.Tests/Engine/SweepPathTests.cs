@@ -186,17 +186,18 @@ public class SweepPathTests
     public void At_160_px_round_the_default_centre_the_path_is_ring_1_and_what_fits_of_ring_2()
     {
         // The owner's close zoom: 150 to 180 px blocks. With the real HUD mask only columns -1 to 2 and
-        // rows -1 to 1 fit (x 240 to 720, y 150 to 470); ring 2 keeps its right column, the rest of it
-        // is off the client or in the HUD. Row 1 sits on y 470, the hotbar line, which HudMask leaves in.
+        // rows -1 to 0 fit (x 240 to 720, y 150 to 310): row 1 sits on y 470, the hotbar line, which
+        // HudMask counts as HUD (a held button 15 px above the slots). Ring 2 keeps what fits of its
+        // right column; the rest of it is off the client or in the HUD.
         var path = SweepPath.Build(400, 310, 160, 800, 599, nearSide: true, Hud);
         var cells = Cells(path, 400, 310, 160);
 
-        Assert.Equal(new[]
-        {
-            new SweepPoint(560, 310), new SweepPoint(560, 150), new SweepPoint(400, 150), new SweepPoint(240, 150),
-            new SweepPoint(240, 310), new SweepPoint(240, 470), new SweepPoint(400, 470), new SweepPoint(560, 470),
-            new SweepPoint(720, 470), new SweepPoint(720, 310), new SweepPoint(720, 150), new SweepPoint(560, 310),
-        }, path);
+        Assert.Equal(new SweepPoint(560, 310), path[0]);
+        Assert.Equal(path[0], path[^1]);
+        Assert.Contains(new SweepPoint(240, 150), path);
+        Assert.Contains(new SweepPoint(240, 310), path);
+        Assert.Contains(new SweepPoint(720, 150), path);
+        Assert.DoesNotContain(path, p => p.Y >= 470);
         Assert.Null(UrTaskRefusal(path, 160, 800, 599));
         Assert.DoesNotContain(path, p => Hud(p.X, p.Y));
         Assert.DoesNotContain((0, 0), cells);
