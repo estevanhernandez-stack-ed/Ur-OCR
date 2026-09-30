@@ -19,6 +19,13 @@ internal static class PulseFixtures
 
     public static RingDefinition RingWithFinder(string layer = "grey") => Ring() with { Finders = new[] { Finder(layer) } };
 
+    /// <summary>The Auto Mine dot guard a live finder carries: 3x3 at 55,289, red, within 30.</summary>
+    public static readonly GuardBox Dot = new(55, 289, 3, 3, new Rgb(255, 19, 90), 30);
+
+    /// <summary>A ring whose aim-layer finder has a guard, so a pass with a read block size sweeps.</summary>
+    public static RingDefinition RingWithSweep(string layer = "grey") =>
+        Ring() with { Finders = new[] { Finder(layer) with { Guard = Dot } } };
+
     /// <summary>An 800x599 calm frame of grey rock with the given rectangles painted over it.</summary>
     public static FramePixels Calm(params (int X, int Y, int W, int H, Rgb Colour)[] paint)
     {

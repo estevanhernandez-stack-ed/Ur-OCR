@@ -95,6 +95,10 @@ public static class BridgeContract
     public const string MethodSweepPath = "SweepPath";
     /// <summary>Ur Task refuses a SweepPath with more points than this (or fewer than 3).</summary>
     public const int MaxSweepPoints = 256;
+    /// <summary>Ur Task refuses a SweepPath step outside this range.</summary>
+    public const int MinSweepStep = 8;
+    /// <summary>Ur Task refuses a SweepPath step outside this range.</summary>
+    public const int MaxSweepStep = 240;
     public const string CallerId = "626labs.ur-ocr";
     public const string ContractVersion = "1.0";
 

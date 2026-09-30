@@ -13,10 +13,14 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// Above the aim layer: ride again. Past it: Go to Top.
 /// At it: Clearing. With an ore finder for the aim layer, one ClearAt call carries the finder's points
 /// (ore patches, then a block grid) from a calm frame; without one, one Clear spot per ring spot,
-/// ore first. Ur Task skips a point or spot with no outline. A pass that cleared something settles and
-/// reads again; a pass that cleared nothing first turns the camera (Turning, "Camera turn left", then
-/// SettleMs and a read) up to MaxTurns times since the last progress, then rides a burst (Bursting),
-/// twice as long for each such burst in a row (RideLonger). RockCapMinutes on one
+/// ore first. With a guard in the finder and a block size read off the frame, the stone is swept
+/// instead (spec 2026-09-29): ClearAt with the ore points only, then one SweepPath around the
+/// character, then a settle and a read; the next read judges the sweep (SweepChange), and a sweep
+/// that changed nothing is a pass with nothing in reach. Ur Task skips a point or spot with no
+/// outline. A pass that cleared something settles and reads again; a pass that cleared nothing
+/// first turns the camera (Turning, "Camera turn left", then SettleMs and a read) up to MaxTurns
+/// times since the last progress, then rides a burst (Bursting), twice as long for each such burst
+/// in a row (RideLonger). RockCapMinutes on one
 /// aim layer with nothing cleared (time behind or paused not counted): Go to Top. Each tick does
 /// everything it can and returns at the first wait. Nothing starts unless the account is in front,
 /// read again right before each macro; a playback already started is still followed.
@@ -50,6 +54,15 @@ public sealed class PulseLoop
     private bool _clearAtEnded;                        // this pass's ClearAt has ended
     private bool _frameLogged;
     private readonly int _toleranceRgb;               // the ring spots' rock tolerance, for the colour-share read
+    private IReadOnlyList<SweepPoint>? _sweep;         // this pass's sweep path; null clears stone point by point
+    private FramePixels? _sweepFrame;                  // the calm frame the sweep pass was planned on
+    private bool _sweeping;                            // the sweep's call is in flight
+    private bool _sweepEnded;                          // this pass's sweep has ended
+    private SweepCheck? _sweepCheck;                   // a finished sweep, judged on the next calm frame
+
+    /// <summary>A sweep to judge on the next calm frame: the frame it was planned on, its path and the
+    /// block size it moved by.</summary>
+    private sealed record SweepCheck(FramePixels Before, IReadOnlyList<SweepPoint> Path, int Pitch);
 
     private bool _macroDone;               // this state's macro has ended
     private DateTimeOffset? _until;        // this state's timer: set when its macro ends
@@ -85,7 +98,10 @@ public sealed class PulseLoop
         var mode = config.Mode == PulseMode.OneAbove ? "one above" : "top";
         var how = _finder is null
             ? "the 8 Clear spot macros"
-            : $"the ore finder ({_finder.Pitch} px blocks, radius {_finder.RadiusBlocks})";
+            : $"the ore finder ({_finder.Pitch} px blocks, radius {_finder.RadiusBlocks})"
+              + (_finder.Guard is null
+                  ? ""
+                  : $", sweeping stone ({config.SweepDwellMs} ms a point, near side {(config.SweepNearSide ? "on" : "off")})");
         _log($"started: ring {config.RingId}, target layer {config.TargetLayer} ({mode}), clearing on {_ring!.Layers[config.AimLayer - 1].Name} with {how}");
     }
 
@@ -180,6 +196,19 @@ public sealed class PulseLoop
         }
         _frameLogged = false;
 
+        // The last pass swept and cleared no ore: this calm frame says whether the sweep broke anything.
+        if (_sweepCheck is { } check)
+        {
+            _sweepCheck = null;
+            var points = SweepChange.Points(check.Path);
+            var changed = SweepChange.Count(check.Before, frame, check.Path, finder.ClientW, finder.ClientH, check.Pitch);
+            if (changed == 0) return NothingInReach($"the sweep broke nothing (0 of {points} points changed)");
+            _emptyPasses = 0;
+            _turns = 0;
+            _progressAt = now;
+            _log($"the sweep changed {changed} of {points} points");
+        }
+
         var ring = _ring!;
         var pass = ForPass(frame, finder);
         var (sx, sy) = Scale(frame, finder);
@@ -201,7 +230,13 @@ public sealed class PulseLoop
 
         var targets = TargetFinder.Find(frame, pass);
         if (_pitchUnread) targets = NearestStone(targets, UnreadStonePoints);
-        if (targets.Count == 0)
+        _sweep = SweepFor(pass);
+        if (_sweep is not null)
+        {
+            targets = targets.Where(t => t.Ore).ToList();   // the stone is swept, not pressed point by point
+            _sweepFrame = frame;
+        }
+        else if (targets.Count == 0)
         {
             _log($"{seen} is the target, but the ore finder has no point inside the window: riding a burst");
             return Enter(PulseState.Bursting);
@@ -209,7 +244,9 @@ public sealed class PulseLoop
         _targets = targets;
         _pass = pass;
         var ore = targets.Count(t => t.Ore);
-        _log($"{seen} is the target: clearing at {targets.Count} points ({ore} ore, {targets.Count - ore} stone)");
+        _log(_sweep is { } path
+            ? $"{seen} is the target: {ore} ore {(ore == 1 ? "point" : "points")}, then a sweep of {path.Count} points"
+            : $"{seen} is the target: clearing at {targets.Count} points ({ore} ore, {targets.Count - ore} stone)");
         return Enter(PulseState.Clearing);
     }
 
@@ -239,6 +276,7 @@ public sealed class PulseLoop
         if (Route(layer, seen, now) is { } moved) return moved;
 
         _targets = null;
+        _sweep = null;
         var order = PulseOrder.Rank(samples, ring.Layers[LayerNumber(layer) - 1].Rock);
         foreach (var o in order) _queue.Enqueue(o);
         _log($"{seen} is the target: clearing {string.Join(" ", order.Select(SpotName))}");
@@ -282,12 +320,26 @@ public sealed class PulseLoop
         _cleared.Clear();
         _skipped.Clear();
         _clearAtEnded = false;
+        _sweepEnded = false;
+        _sweeping = false;
         return null;
     }
 
     /// <summary>Every ore point and the first <paramref name="stone"/> stone points (they come nearest first).</summary>
     private static IReadOnlyList<FinderTarget> NearestStone(IReadOnlyList<FinderTarget> targets, int stone) =>
         targets.Where(t => t.Ore).Concat(targets.Where(t => !t.Ore).Take(stone)).ToList();
+
+    /// <summary>This pass's sweep path, or null to clear the stone point by point as before: the block
+    /// size was not read off the frame (the path's step would be a guess), the finder has no guard (a
+    /// held button needs one), the block size is outside BridgeContract.MinSweepStep..MaxSweepStep (Ur
+    /// Task would refuse the step), or fewer than SweepPath.MinPoints points fit.</summary>
+    private IReadOnlyList<SweepPoint>? SweepFor(FinderSetup pass)
+    {
+        if (_pitchUnread || pass.Guard is null) return null;
+        if (pass.Pitch is < BridgeContract.MinSweepStep or > BridgeContract.MaxSweepStep) return null;
+        var path = SweepPath.Build(pass, _config.SweepNearSide);
+        return path.Count >= SweepPath.MinPoints ? path : null;
+    }
 
     private static string Percent(double share) =>
         (share * 100).ToString("0", CultureInfo.InvariantCulture) + "%";
@@ -335,14 +387,23 @@ public sealed class PulseLoop
     {
         if (_targets is { } targets)
         {
-            if (_clearAtEnded) return EndPass();
             var f = _pass!;
             var guard = f.Guard is { } g ? new ClearAtGuard(g.X, g.Y, g.W, g.H, g.Expect, g.Tolerance) : null;
-            _call.BeginClearAt(new ClearAtClient(f.ClientW, f.ClientH),
-                targets.Select(t => new ClearAtPoint(t.X, t.Y, t.Label)).ToList(),
-                new ClearAtOutline(f.Outline.W, f.Outline.H, f.Outline.MinCount, f.Outline.WhiteMin),
-                guard);
-            return true;
+            if (!_clearAtEnded && targets.Count > 0)      // a sweep pass with no ore goes straight to the sweep
+            {
+                _call.BeginClearAt(new ClearAtClient(f.ClientW, f.ClientH),
+                    targets.Select(t => new ClearAtPoint(t.X, t.Y, t.Label)).ToList(),
+                    new ClearAtOutline(f.Outline.W, f.Outline.H, f.Outline.MinCount, f.Outline.WhiteMin),
+                    guard);
+                return true;
+            }
+            if (_sweep is { } path && !_sweepEnded)
+            {
+                _sweeping = true;                          // SweepFor sweeps only with a guard
+                _call.BeginSweep(new ClearAtClient(f.ClientW, f.ClientH), path, f.Pitch, _config.SweepDwellMs, guard!);
+                return true;
+            }
+            return EndPass();
         }
         if (_spot < 0)
         {
@@ -356,6 +417,7 @@ public sealed class PulseLoop
     {
         if (_targets is { } targets)
         {
+            if (_sweep is { } path) return EndSweepPass(path);
             if (_cleared.Count > 0)
             {
                 _emptyPasses = 0;
@@ -374,6 +436,22 @@ public sealed class PulseLoop
             return Enter(PulseState.Pausing, macroDone: true);   // Auto Mine is still off: just settle
         }
         return NothingInReach($"nothing in reach to clear ({_skipped.Count} spots skipped)");
+    }
+
+    /// <summary>A sweep pass ends in a settle and a read, Auto Mine still off. Ore cleared is progress
+    /// whatever the sweep did; otherwise the next calm frame judges the sweep (ReadByShare).</summary>
+    private bool EndSweepPass(IReadOnlyList<SweepPoint> path)
+    {
+        if (_cleared.Count > 0)
+        {
+            _emptyPasses = 0;
+            _turns = 0;
+            _log($"cleared ore and swept {path.Count} points: reading again");
+            return Enter(PulseState.Pausing, macroDone: true);
+        }
+        _sweepCheck = new SweepCheck(_sweepFrame!, path, _pass!.Pitch);
+        _log($"swept {path.Count} points: reading again");
+        return Enter(PulseState.Pausing, macroDone: true);
     }
 
     /// <summary>A pass with nothing in reach usually means a jammed camera or faces turned away, not an
@@ -426,6 +504,17 @@ public sealed class PulseLoop
 
         if (State == PulseState.Clearing)
         {
+            if (_sweeping)
+            {
+                // The sweep holds the button the whole way, so it always presses: only a stop matters here.
+                // Whether it broke anything is read off the next calm frame (EndSweepPass, ReadByShare).
+                _sweeping = false;
+                _sweepEnded = true;
+                if (r.Status == CallStatus.CheckFailed)
+                    Stop($"'{r.Label}' stopped at its check ({r.Detail}). Something may be over the game, such as a " +
+                         "menu or a player's profile, so the pulse loop stopped rather than click it.");
+                return;
+            }
             // A ClearAt is one playback for the whole pass: finished counts as cleared progress (rock
             // cap, no burst) exactly as a Clear spot does; finished + skipped means nothing cleared.
             var name = _targets is null ? SpotName(_spot) : r.Label;

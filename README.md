@@ -65,6 +65,10 @@ The eight ring spots touch about 8 of the 70 blocks in view. With an ore finder 
 
 The block size is read from the screen on every pass. The camera stays zoomed out, but the game pulls it in to the first wall behind you, so a block is about 22 px on the open surface, 32 px in a pit and 170 px down a one-block shaft. Ur OCR measures the repeat of the rock pattern around your character and uses it for the grid, the reach and the outline box (one block square, 16 to 240 px). When the frame shows no clear pattern, it uses the `pitch` you measured for the layer. The log says which it used, `block size 32 px (read from the frame)` or `block size 50 px (layer default; no clear pattern)`, each time the size changes.
 
+### Stone is swept
+
+With a guard in the finder and a block size read off the frame, the pulse no longer presses stone one block at a time. Ore still goes first, point by point. Then Ur Task holds the left button down on the block right of your character and walks the pointer around you, one block at a time, ring by ring out to 4 blocks, and lets go back on the block it started on. It never touches the block you stand on, and it skips the game's buttons. Toward the bottom of the window, where the blocks nearest the camera sit, the rows carry on past 4 blocks to just short of the edge, unless you set `sweepNearSide` to false. The next calm frame decides how it went: a sweep that changed none of its blocks counts as a pass with nothing in reach. When the block size can't be read, or the finder has no guard, the stone is cleared point by point as before. Needs Ur Task 0.12.0 or later.
+
 When nothing is in reach, the pulse turns the camera to look again from three more angles before riding on.
 
 When nothing is in reach, the pulse rides longer each time (up to 30 s), so a tunnel where the camera is jammed close costs little. When it can't tell the block size, it checks fewer spots with a bigger box.
