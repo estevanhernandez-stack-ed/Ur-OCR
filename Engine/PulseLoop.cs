@@ -27,7 +27,9 @@ public enum PulseState { Riding, Pausing, Reading, Clearing, Bursting, GoingToTo
 /// first turns the camera (Turning, "Camera turn left", then SettleMs and a read) up to MaxTurns
 /// times since the last progress, then rides a burst (Bursting), twice as long for each such burst
 /// in a row (RideLonger). RockCapMinutes on one
-/// aim layer with nothing cleared (time behind or paused not counted): Go to Top. Each tick does
+/// aim layer with nothing cleared (time behind or paused not counted): Go to Top. A colour-share read
+/// with no layer, or one under DarkShareFloorPct, is dark: no pass, a burst; DarkStreakLimit of them
+/// in a row: Go to Top ("can't see the mine"). Each tick does
 /// everything it can and returns at the first wait. Nothing starts unless the account is in front,
 /// read again right before each macro; a playback already started is still followed.
 /// A clear or macro whose check could not run (CheckFailed) or that Ur Task lost (Lost) stops the loop.
@@ -66,6 +68,14 @@ public sealed class PulseLoop
     /// live 2026-09-30: the same spots came back empty 11 to 14 passes running, about 0.6 s each).
     /// After that it is tried again, and remembered again if it is still empty.</summary>
     public const int NoOutlinePasses = 5;
+    /// <summary>A colour-share read whose layer holds under this share of the area (in percent) is a
+    /// dark read: no target pass, a burst instead (live 2026-09-30: after a mine reset dropped the
+    /// character at the bottom of the full mine, in the dark, "black (4% of the area)" was taken as the
+    /// target and 60 ore points planned; real black reads that day were 7 to 14%).</summary>
+    public const int DarkShareFloorPct = 5;
+    /// <summary>Dark reads in a row (no layer, or a layer under DarkShareFloorPct) before the pulse goes
+    /// to top: it cannot see the mine, and bursting in the dark does not get it back up.</summary>
+    public const int DarkStreakLimit = 4;
 
     private readonly PulseConfig _config;
     private readonly RingDefinition? _ring;
@@ -134,6 +144,7 @@ public sealed class PulseLoop
     private bool _reachedAim;              // a read landed on the aim layer or deeper since the last Go to Top
     private DateTimeOffset? _targetFired;  // the target usable's last try
     private string? _usable;               // "ride" or "target" while that usable's call is in flight
+    private int _darkReads;                // colour-share reads in a row with no layer or one under the floor
 
     public PulseLoop(PulseConfig config, IReadOnlyList<RingDefinition> rings, IReadOnlyList<Trigger> triggers,
         ISpotReader reader, IMacroRunClient macros, IClock clock, Action<string> log)
@@ -290,12 +301,21 @@ public sealed class PulseLoop
             Math.Max(1, (int)Math.Round(pass.Pitch * (sx + sy) / 2)), ring.Layers, finder.Ore.Select(o => o.Rgb).ToList(),
             _toleranceRgb, ring.LayerMinShare ?? LayerShare.DefaultMinShare, ring.LayerLead ?? LayerShare.DefaultLead);
         var ranked = ring.Layers.Select(l => (l.Name, Share: read.Shares[l.Name])).OrderByDescending(x => x.Share).ToList();
-        if (read.Layer is not { } layer)
+        if (read.Layer is not { } layer || read.Shares[layer] < DarkShareFloorPct / 100.0)
         {
+            // A dark read: nothing to trust on this frame, whatever layer it named.
             _readAbove = false;            // not sure where it is: no ride usable on this burst
-            _log($"no layer on a calm frame (best {ranked[0].Name} {Percent(ranked[0].Share)}): riding a burst");
+            if (++_darkReads >= DarkStreakLimit)
+            {
+                _log($"can't see the mine ({_darkReads} dark reads in a row): going to top");
+                return Enter(PulseState.GoingToTop);       // Enter starts the streak over
+            }
+            _log(read.Layer is { } dim
+                ? $"layer {dim} ({Percent(read.Shares[dim])} of the area) is under the {DarkShareFloorPct}% floor: riding a burst"
+                : $"no layer on a calm frame (best {ranked[0].Name} {Percent(ranked[0].Share)}): riding a burst");
             return Enter(PulseState.Bursting);
         }
+        _darkReads = 0;
 
         var next = ranked.FirstOrDefault(x => !string.Equals(x.Name, layer, StringComparison.OrdinalIgnoreCase));
         var seen = next.Name is null
@@ -857,6 +877,7 @@ public sealed class PulseLoop
     {
         if (next is PulseState.Riding or PulseState.Bursting or PulseState.GoingToTop or PulseState.Turning or PulseState.Charging)
             ForgetNoOutline();
+        if (next == PulseState.GoingToTop) _darkReads = 0;   // back at the top: the dark streak starts over
         State = next;
         _burstMs = _config.BurstMs;       // a growing burst is set by RideLonger after this
         _macroDone = macroDone;
